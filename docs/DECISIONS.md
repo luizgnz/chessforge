@@ -339,6 +339,40 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 
 ---
 
+## ADR-012 — Secrets: HashiCorp Vault + External Secrets Operator (with Phase 3)
+
+| | |
+|--|--|
+| **Date** | 2026-08-07 |
+| **Phase** | 3 (chosen now; implement with Argo CD) |
+| **Status** | Accepted (not implemented yet) |
+
+**Context:** Phase 2 stores demo DB credentials in Git (`deploy/k8s/secret.yaml`, Helm values). Need a production-shaped secrets path without blocking the working pipeline.
+
+**Decision:**
+
+- Use **HashiCorp Vault** as the secrets backend (store / policy / audit).
+- Use **External Secrets Operator (ESO)** to sync Vault → Kubernetes `Secret` (e.g. `chessforge-db` for `DATABASE_URL`).
+- Implement in **Phase 3 together with Argo CD**, not as a separate Phase 2.5 on kind.
+
+**Rationale:**
+
+- Vault governs secrets; ESO keeps workloads on idiomatic `secretKeyRef` (current ingest/analyzer manifests).
+- Vault + ESO is a common prod pattern and more portable than app-level Vault SDK calls.
+- Bundling with Argo avoids reworking the cluster twice and makes secret *references* (ExternalSecret, Vault auth) part of the GitOps desired state.
+- Phase 2 demo plaintext secrets remain acceptable until Phase 3 lands.
+
+**Rejected (for now):**
+
+- **Vault alone + Agent Injector** — prod-valid, but more Vault-specific annotations; weaker fit with current Secret-based env.
+- **ESO + cloud SM only (no Vault)** — fine later if cloud is mandated; Vault is better for kind-first learning of a self-hosted manager.
+- **Sealed Secrets** — good GitOps-lite; chosen against in favor of a real manager + sync operator.
+- **Implement Vault+ESO immediately on kind (Phase 2.5)** — deferred so GitOps and secrets arrive together.
+
+**GitOps impact:** Phase 3 should reconcile Argo apps *and* ESO/`ExternalSecret` (and Vault install or its bootstrap story) from Git. Plaintext DB passwords should leave the repo when this ships.
+
+---
+
 ## Decision index by phase
 
 | Phase | ADRs | GitOps met? |
@@ -346,7 +380,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 | 0 Local CLI | 001, 002, 003 | No |
 | 1 Docker + GHA + GHCR | 004 | No |
 | 2 kind + NATS + Postgres + app YAML | 005–009 | No / partial (Git + kubectl/helm) |
-| 3 Argo CD | 010 | Yes (target) |
+| 3 Argo CD + Vault + ESO | 010, 012 | Yes (target) |
 | 4 KEDA | 011 | Yes if under Argo |
 | 5 Observability | (pending ADR) | Yes if under Argo |
 | 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
@@ -359,3 +393,4 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 |------|--------|
 | 2026-08-07 | Initial decision log (ADR-001 … ADR-011) committed with Phase 2 design direction. |
 | 2026-08-07 | Phase 2 pipeline implemented: `deploy/kind-up.sh`, ingest/worker modules, Helm NATS+Postgres, kind YAML. |
+| 2026-08-07 | ADR-012: Vault + ESO accepted; implement with Argo in Phase 3 (not Phase 2.5). |
