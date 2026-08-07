@@ -1,0 +1,8 @@
+auth:
+  username: chessforge
+  password: chessforge
+  database: chessforge
+primary:
+  persistence:
+    enabled: true
+    size: 1Gi

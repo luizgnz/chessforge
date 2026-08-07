@@ -358,3 +358,4 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 | Date | Change |
 |------|--------|
 | 2026-08-07 | Initial decision log (ADR-001 … ADR-011) committed with Phase 2 design direction. |
+| 2026-08-07 | Phase 2 pipeline implemented: `deploy/kind-up.sh`, ingest/worker modules, Helm NATS+Postgres, kind YAML. |

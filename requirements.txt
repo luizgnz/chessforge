@@ -1,2 +1,4 @@
 chess==1.10.0
 zstandard==0.22.0
+nats-py==2.9.0
+psycopg[binary]==3.2.3

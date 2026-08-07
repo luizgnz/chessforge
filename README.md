@@ -60,7 +60,32 @@ This is **not** GitOps yet (no Argo CD / cluster reconciliation).
 4. Queries like “blunders by opening / Elo”.
 5. Reproducible image + CI that publishes to GHCR.
 
-Next: Phase 2 on **kind** (NATS JetStream + Postgres + ingest Job / analyzer Deployment). Then KEDA, observability, Chaos Mesh, GitOps with **Argo CD**.
+## Phase 2 (kind + NATS + Postgres)
+
+Local Kubernetes pipeline (not GitOps yet):
+
+`ingest` Job → NATS JetStream → `analyzer` Deployment (Stockfish) → Postgres
+
+Requirements: Docker, [`kind`](https://kind.sigs.k8s.io/), [`helm`](https://helm.sh/), `kubectl`.
+
+```bash
+./deploy/kind-up.sh          # create cluster, install deps, load image, run sample
+./deploy/kind-down.sh        # delete kind cluster
+```
+
+Smoke success: Postgres has 5 games from `data/sample.pgn`.  
+Still **not** GitOps (manual Helm/`kubectl`; Argo CD is later).
+
+## What this demonstrates
+
+1. Real CPU-bound analysis at a fixed depth (reproducible).
+2. Idempotent persistence (`ON CONFLICT DO NOTHING`).
+3. Verifiable counts (`enqueued` vs analyzed).
+4. Queries like “blunders by opening / Elo” (local CLI).
+5. Reproducible image + CI that publishes to GHCR.
+6. Distributed ingest → queue → workers → Postgres on kind.
+
+Next: KEDA, observability, Chaos Mesh, GitOps with **Argo CD**.
 
 ## Docs
 
