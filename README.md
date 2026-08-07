@@ -28,7 +28,16 @@ docker build -t chessforge:local .
 docker run --rm chessforge:local
 ```
 
-CI publishes `ghcr.io/luizgnz/chessforge:latest` on `main`.
+CI publishes `ghcr.io/luizgnz/chessforge:latest` on `main`. The package is **public** (same as the repo) so kind/nodes pull without an `imagePullSecret`. Vault/ESO stay for DB credentials only; private-package pull secrets are deferred.
+
+### Make the package public (GitHub UI)
+
+If anonymous `docker pull ghcr.io/luizgnz/chessforge:latest` still fails with unauthorized:
+
+1. Open [github.com/users/luizgnz/packages/container/package/chessforge](https://github.com/users/luizgnz/packages/container/package/chessforge) (or **Packages** → **chessforge** from the profile/repo).
+2. **Package settings** → **Change visibility** → **Public** → confirm.
+
+(`gh` needs `read:packages` / `write:packages` to change this via API; the default `gh auth` token often lacks those scopes.)
 
 ## Phase 3 — GitOps on kind (Argo + Vault + ESO)
 
@@ -46,7 +55,7 @@ Design record: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013**.
 
 Demo Vault unseal material is written to `.vault-init.json` (gitignored) and Secret `vault-init` in the `vault` namespace — kind learning only.
 
-On Apple Silicon, `kind-up` builds and `kind load`s a native image (CI GHCR multi-arch may lag). If Postgres auth fails after changing the Vault password, delete the Postgres PVC and re-sync (`kubectl -n chessforge delete pvc data-chessforge-postgresql-0`).
+By default `kind-up` relies on a **public** GHCR pull. On Apple Silicon (or if pull fails), use `FORCE_KIND_LOAD=1 ./deploy/kind-up.sh` to build and `kind load` a node-native image. If Postgres auth fails after changing the Vault password, delete the Postgres PVC and re-sync (`kubectl -n chessforge delete pvc data-chessforge-postgresql-0`).
 
 ## What this demonstrates
 

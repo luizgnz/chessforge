@@ -65,11 +65,16 @@ for i in $(seq 1 60); do
 done
 kubectl -n "$NS" get secret chessforge-db >/dev/null
 
-# GHCR :latest from CI is linux/amd64; kind on Apple Silicon needs a native image.
-echo "==> build + kind load $IMAGE (node-native platform)"
-DOCKER_BUILDKIT=1 docker build -t "$IMAGE" "$ROOT"
-kind load docker-image "$IMAGE" --name "$CLUSTER"
-kubectl -n "$NS" rollout restart deployment/analyzer 2>/dev/null || true
+# Prefer public GHCR pull (package visibility: public). Optional kind load fallback:
+# FORCE_KIND_LOAD=1 builds a node-native image (useful on Apple Silicon if GHCR is amd64-only).
+if [[ "${FORCE_KIND_LOAD:-0}" == "1" ]]; then
+  echo "==> FORCE_KIND_LOAD=1: build + kind load $IMAGE"
+  DOCKER_BUILDKIT=1 docker build -t "$IMAGE" "$ROOT"
+  kind load docker-image "$IMAGE" --name "$CLUSTER"
+  kubectl -n "$NS" rollout restart deployment/analyzer 2>/dev/null || true
+else
+  echo "==> using public pull for $IMAGE (set FORCE_KIND_LOAD=1 to kind load instead)"
+fi
 
 echo "==> wait for nats + postgres + analyzer"
 for i in $(seq 1 90); do

@@ -391,7 +391,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 | Argo shape | **App of Apps** (root Application → child Applications) |
 | Vault | Official Helm chart, **single-node Raft**, documented demo bootstrap (init/unseal/KV/auth) — not `vault -dev` |
 | Bootstrap boundary | `kind-up` creates kind + installs **Argo CD only** + applies root Application; Argo owns the rest |
-| Images | Pull **`ghcr.io/luizgnz/chessforge`** (public package or pull secret via ESO if private) |
+| Images | Pull **`ghcr.io/luizgnz/chessforge`** (**public** GHCR package while the repo is public) |
 
 ### Goal
 
@@ -435,7 +435,8 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 ### Image policy
 
 - Manifests reference `ghcr.io/luizgnz/chessforge` with an explicit tag (`latest` acceptable for kind learning; prefer git SHA when wiring CI later).
-- If GHCR package is private: `imagePullSecret` supplied via ESO from Vault (same pattern as DB URL).
+- GHCR package stays **public** while the GitHub repo is public — cluster pulls need no `imagePullSecret`.
+- Private GHCR + Vault/ESO `dockerconfigjson` pull secret is **deferred** (not required for Phase 3 while the package is public).
 
 ### Success criteria
 
@@ -488,3 +489,4 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | 2026-08-07 | ADR-013: Phase 3 design accepted (App of Apps, Vault Raft, ESO, GHCR, Argo-owned platform). |
 | 2026-08-07 | Phase 3 implementation: `deploy/gitops` app-of-apps, Vault/ESO/NATS/Postgres via Argo, vault-bootstrap, plaintext `secret.yaml` removed. |
 | 2026-08-07 | Phase 3 smoke verified on kind: Vault→ESO→Secret, ingest enqueued 5, Postgres games=5; Postgres chart 18.8.6; native kind image load. |
+| 2026-08-07 | GHCR package treated as **public** while the repo is public; kind pulls without imagePullSecret. Private package + ESO dockerconfig pull secret deferred. |
