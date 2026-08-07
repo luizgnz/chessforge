@@ -54,19 +54,30 @@ Analyzer replicas follow JetStream consumer lag (`minReplicaCount: 0`, `maxRepli
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
 Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA).
 
-Verify scaling:
-
-```bash
-kubectl -n argocd get application keda chessforge
-kubectl -n chessforge get deploy,scaledobject analyzer
-# idle → replicas toward 0; after ingest Job → scale up within max 4
-kubectl -n chessforge apply -f deploy/k8s/jobs/ingest-sample.yaml
-kubectl -n chessforge get deploy,scaledobject analyzer -w
-```
-
 Demo Vault unseal material is written to `.vault-init.json` (gitignored) and Secret `vault-init` in the `vault` namespace — kind learning only.
 
 By default `kind-up` relies on a **public** GHCR pull. On Apple Silicon (or if pull fails), use `FORCE_KIND_LOAD=1 ./deploy/kind-up.sh` to build and `kind load` a node-native image. If Postgres auth fails after changing the Vault password, delete the Postgres PVC and re-sync (`kubectl -n chessforge delete pvc data-chessforge-postgresql-0`).
+
+## Smoke tests
+
+Focused scripts wrap the verification paths used across phases. Full cheatsheet: [`deploy/scripts/smoke-all.md`](deploy/scripts/smoke-all.md).
+
+| Phase | Command | Expected |
+|-------|---------|----------|
+| 0 Local | `./deploy/scripts/smoke-local.sh` | pytest green |
+| 0 + Stockfish | `RUN_ANALYZE=1 ./deploy/scripts/smoke-local.sh` | `lost=0` |
+| 1 Docker | `./deploy/scripts/smoke-docker.sh` | `lost=0` (1 game; same as CI) |
+| 3–4 Bring-up | `./deploy/kind-up.sh` | Argo Healthy; Secret `chessforge-db`; `games>=5` |
+| 2/3 Pipeline | `./deploy/scripts/smoke-pipeline.sh` | ingest complete; `games>=5` |
+| 4 KEDA | `./deploy/scripts/smoke-keda.sh` | idle `0→N` after ingest; `games>=5` |
+
+```bash
+./deploy/scripts/smoke-local.sh
+./deploy/scripts/smoke-docker.sh
+./deploy/kind-up.sh
+./deploy/scripts/smoke-pipeline.sh   # re-check without recreating kind
+./deploy/scripts/smoke-keda.sh       # scale-to-zero then scale-up
+```
 
 ## What this demonstrates
 
@@ -82,3 +93,4 @@ Next: observability, Chaos Mesh.
 ## Docs
 
 - Decision log: [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- Smoke cheatsheet: [`deploy/scripts/smoke-all.md`](deploy/scripts/smoke-all.md)
