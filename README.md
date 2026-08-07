@@ -60,4 +60,9 @@ This is **not** GitOps yet (no Argo CD / cluster reconciliation).
 4. Queries like “blunders by opening / Elo”.
 5. Reproducible image + CI that publishes to GHCR.
 
-Next: NATS, Kubernetes, KEDA, observability, Chaos Mesh, GitOps with **Argo CD**.
+Next: Phase 2 on **kind** (NATS JetStream + Postgres + ingest Job / analyzer Deployment). Then KEDA, observability, Chaos Mesh, GitOps with **Argo CD**.
+
+## Docs
+
+- Decision log (why each technology/phase): [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- Project phases: [`docs/superpowers/specs/2026-08-07-chessforge-project-spec.md`](docs/superpowers/specs/2026-08-07-chessforge-project-spec.md)

@@ -105,9 +105,11 @@ Status legend: `done` · `pending` · `partial`
 
 | Field | Value |
 |-------|--------|
-| **Status** | `pending` |
-| **Goal** | Distributed pipeline: ingest → queue → workers → DB; basic query API |
-| **GitOps** | **Not met** if deploy is manual `kubectl`; **partial** if manifests already live in Git but Argo is not wired yet |
+| **Status** | `pending` (design approved for first slice; implementation not started) |
+| **Spec** | `docs/superpowers/specs/2026-08-07-phase2-kind-nats-postgres-design.md` |
+| **Decisions** | `docs/DECISIONS.md` (ADR-005 … ADR-009) |
+| **Goal** | Distributed pipeline on kind: ingest → NATS → workers → Postgres + integrity (query API deferred) |
+| **GitOps** | **Not met** if deploy is manual `kubectl`/`helm`; **partial** if manifests already live in Git but Argo is not wired yet |
 
 **Technologies**
 
@@ -270,6 +272,9 @@ Status legend: `done` · `pending` · `partial`
 
 ## 8. Internal references
 
+- Decision log (why each tech/phase): `docs/DECISIONS.md`
 - Phase 0 design: `docs/superpowers/specs/2026-08-07-local-cli-draft-design.md`
 - Phase 0 plan: `docs/superpowers/plans/2026-08-07-local-cli-draft.md`
+- Phase 1 design: `docs/superpowers/specs/2026-08-07-phase1-docker-gha-design.md`
+- Phase 2 design: `docs/superpowers/specs/2026-08-07-phase2-kind-nats-postgres-design.md`
 - Local README: `README.md`
