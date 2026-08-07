@@ -379,7 +379,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 3 |
-| **Status** | Accepted (design; not implemented yet) |
+| **Status** | Accepted — implemented (`deploy/gitops`, Vault bootstrap, ESO; see changelog) |
 
 **Context:** Phase 2 pipeline works on kind via imperative Helm/`kubectl`. Need GitOps (G1–G5) and to remove plaintext DB credentials from Git, using the already-accepted Argo CD + Vault + ESO stack (ADR-010, ADR-012).
 
@@ -471,7 +471,7 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | 0 Local CLI | 001, 002, 003 | No |
 | 1 Docker + GHA + GHCR | 004 | No |
 | 2 kind + NATS + Postgres + app YAML | 005–009 | No / partial (Git + kubectl/helm) |
-| 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (target; design accepted) |
+| 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (when kind-up Phase 3 smoke passes) |
 | 4 KEDA | 011 | Yes if under Argo |
 | 5 Observability | (pending ADR) | Yes if under Argo |
 | 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
@@ -486,3 +486,4 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | 2026-08-07 | Phase 2 pipeline implemented: `deploy/kind-up.sh`, ingest/worker modules, Helm NATS+Postgres, kind YAML. |
 | 2026-08-07 | ADR-012: Vault + ESO accepted; implement with Argo in Phase 3 (not Phase 2.5). |
 | 2026-08-07 | ADR-013: Phase 3 design accepted (App of Apps, Vault Raft, ESO, GHCR, Argo-owned platform). |
+| 2026-08-07 | Phase 3 implementation: `deploy/gitops` app-of-apps, Vault/ESO/NATS/Postgres via Argo, vault-bootstrap, plaintext `secret.yaml` removed. |

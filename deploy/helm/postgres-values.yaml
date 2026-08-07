@@ -1,7 +1,11 @@
+# Password material comes from Secret chessforge-db (ESO <- Vault), not from Git.
 auth:
   username: chessforge
-  password: chessforge
   database: chessforge
+  existingSecret: chessforge-db
+  secretKeys:
+    userPasswordKey: password
+    adminPasswordKey: postgres-password
 primary:
   persistence:
     enabled: true

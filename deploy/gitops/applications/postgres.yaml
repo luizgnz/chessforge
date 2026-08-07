@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.bitnami.com/bitnami
+      chart: postgresql
+      targetRevision: 16.4.1
+      helm:
+        releaseName: chessforge
+        valueFiles:
+          - $values/deploy/helm/postgres-values.yaml
+    - repoURL: https://github.com/luizgnz/chessforge.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chessforge
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

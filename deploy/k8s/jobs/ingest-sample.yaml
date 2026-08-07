@@ -14,7 +14,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: ingest
-          image: chessforge:phase2
+          image: ghcr.io/luizgnz/chessforge:latest
           imagePullPolicy: IfNotPresent
           command:
             - python

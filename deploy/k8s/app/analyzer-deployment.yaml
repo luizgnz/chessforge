@@ -18,7 +18,7 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: analyzer
-          image: chessforge:phase2
+          image: ghcr.io/luizgnz/chessforge:latest
           imagePullPolicy: IfNotPresent
           command:
             - python
@@ -39,6 +39,5 @@ spec:
               cpu: "500m"
               memory: 256Mi
             limits:
-              # One Stockfish thread; avoid noisy-neighbor oversubscribe.
               cpu: "1"
               memory: 512Mi

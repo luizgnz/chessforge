@@ -1,14 +1,14 @@
-# chessforge (local draft)
+# chessforge
 
-Local draft without Kubernetes: analyze PGN games with Stockfish, store results in SQLite, and query blunders by opening.
+Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets.
 
 ## Requirements
 
 - Python 3.12+
-- Stockfish (`brew install stockfish`) — only for local runs without Docker
-- Docker (optional) — image includes Stockfish
+- Stockfish (`brew install stockfish`) — local CLI without Docker
+- Docker, [`kind`](https://kind.sigs.k8s.io/), [`helm`](https://helm.sh/), `kubectl`, `jq` — cluster path
 
-## Setup
+## Setup (local CLI)
 
 ```bash
 python3 -m venv .venv
@@ -16,77 +16,46 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Local usage
-
 ```bash
-# Analyze the sample (depth 10, 1 Stockfish thread)
 python -m chessforge.analyze --source data/sample.pgn --depth 10 --max-games 5
-
-# Report by opening (ECO)
 python -m chessforge.report --eco C50
 ```
 
-When finished, `analyze` prints an integrity summary:
-
-```text
-DONE  RUN …  enqueued=5  analyzed=5  failed=0  lost=0  …
-```
-
-## Docker (Phase 1)
-
-Multi-stage `python:3.12-slim-bookworm` image + Stockfish via `apt` (no compile from source).
+## Docker / GHCR
 
 ```bash
 docker build -t chessforge:local .
 docker run --rm chessforge:local
 ```
 
-By default it analyzes 1 sample game and writes the DB to `/tmp/chessforge.db`.
+CI publishes `ghcr.io/luizgnz/chessforge:latest` on `main`.
 
-## CI / GHCR
+## Phase 3 — GitOps on kind (Argo + Vault + ESO)
 
-GitHub Actions (`.github/workflows/ci.yml`):
-
-- On PR and `main`: `pytest` + `docker build` + smoke (`docker run`, 1 game).
-- On push to `main` only: publish `ghcr.io/<owner>/<repo>:<sha>` and `:latest` **after** smoke.
-
-This is **not** GitOps yet (no Argo CD / cluster reconciliation).
-
-## What this demonstrates
-
-1. Real CPU-bound analysis at a fixed depth (reproducible).
-2. Idempotent persistence (`ON CONFLICT DO NOTHING`).
-3. Verifiable counts (`enqueued` vs analyzed).
-4. Queries like “blunders by opening / Elo”.
-5. Reproducible image + CI that publishes to GHCR.
-
-## Phase 2 (kind + NATS + Postgres)
-
-Local Kubernetes pipeline (not GitOps yet):
-
-`ingest` Job → NATS JetStream → `analyzer` Deployment (Stockfish) → Postgres
-
-Requirements: Docker, [`kind`](https://kind.sigs.k8s.io/), [`helm`](https://helm.sh/), `kubectl`.
+Bootstrap (once): create kind + install Argo CD + apply the root Application.  
+Argo reconciles Vault, ESO, NATS, Postgres, and the analyzer Deployment from Git.  
+DB credentials live in Vault; ESO syncs them to Secret `chessforge-db`.
 
 ```bash
-./deploy/kind-up.sh          # create cluster, install deps, load image, run sample
-./deploy/kind-down.sh        # delete kind cluster
+./deploy/kind-up.sh    # needs this repo pushed to GitHub (Argo pulls HEAD)
+./deploy/kind-down.sh
 ```
 
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
-Still **not** GitOps (manual Helm/`kubectl`). Phase 3 design (Argo + Vault + ESO) is in [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013**.
+Design record: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013**.
+
+Demo Vault unseal material is written to `.vault-init.json` (gitignored) and Secret `vault-init` in the `vault` namespace — kind learning only.
 
 ## What this demonstrates
 
-1. Real CPU-bound analysis at a fixed depth (reproducible).
-2. Idempotent persistence (`ON CONFLICT DO NOTHING`).
-3. Verifiable counts (`enqueued` vs analyzed).
-4. Queries like “blunders by opening / Elo” (local CLI).
-5. Reproducible image + CI that publishes to GHCR.
-6. Distributed ingest → queue → workers → Postgres on kind.
+1. CPU-bound Stockfish analysis at fixed depth (`Threads=1`).
+2. Idempotent persistence under redelivery.
+3. Distributed ingest → NATS JetStream → analyzer workers → Postgres.
+4. GitOps with Argo CD (app of apps).
+5. Secrets via Vault + External Secrets Operator (no DB password in Git).
 
-Next: KEDA, observability, Chaos Mesh, GitOps with **Argo CD**.
+Next: KEDA, observability, Chaos Mesh.
 
 ## Docs
 
-- Decision log (why each technology/phase): [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- Decision log: [`docs/DECISIONS.md`](docs/DECISIONS.md)

@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nats
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://nats-io.github.io/k8s/helm/charts
+      chart: nats
+      targetRevision: 2.14.4
+      helm:
+        releaseName: chessforge-nats
+        valueFiles:
+          - $values/deploy/helm/nats-values.yaml
+    - repoURL: https://github.com/luizgnz/chessforge.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chessforge
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
