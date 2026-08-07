@@ -210,7 +210,6 @@ Note: second build-push on `main` should hit cache after smoke; smoke gates `:la
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md`
 
 - [ ] **Step 1: README — add Docker + CI section**
 
@@ -223,11 +222,7 @@ docker run --rm chessforge:local
 
 Note: CI pushes `ghcr.io/<owner>/<repo>:latest` on `main`; GitOps still not in use.
 
-- [ ] **Step 2: Parent spec — Phase 1 status**
-
-Set Phase 1 status to `done` after local docker smoke passes; keep GitOps **No**.
-
-- [ ] **Step 3: Run unit tests**
+- [ ] **Step 2: Run unit tests**
 
 ```bash
 pytest -q
@@ -235,7 +230,7 @@ pytest -q
 
 Expected: PASS
 
-- [ ] **Step 4: Final local docker smoke** (reconfirm)
+- [ ] **Step 3: Final local docker smoke** (reconfirm)
 
 ---
 

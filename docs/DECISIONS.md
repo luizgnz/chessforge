@@ -4,13 +4,6 @@
 **Language:** English only (repo convention).  
 **Status:** Living document — append new ADRs; do not rewrite history silently (add a supersession note instead).
 
-Related specs:
-
-- Project roadmap: `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md`
-- Phase 0: `docs/superpowers/specs/2026-08-07-local-cli-draft-design.md`
-- Phase 1: `docs/superpowers/specs/2026-08-07-phase1-docker-gha-design.md`
-- Phase 2: `docs/superpowers/specs/2026-08-07-phase2-kind-nats-postgres-design.md`
-
 ---
 
 ## How to read this

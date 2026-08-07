@@ -65,4 +65,3 @@ Next: Phase 2 on **kind** (NATS JetStream + Postgres + ingest Job / analyzer Dep
 ## Docs
 
 - Decision log (why each technology/phase): [`docs/DECISIONS.md`](docs/DECISIONS.md)
-- Project phases: [`docs/superpowers/specs/2026-08-07-chessforge-project-spec.md`](docs/superpowers/specs/2026-08-07-chessforge-project-spec.md)
