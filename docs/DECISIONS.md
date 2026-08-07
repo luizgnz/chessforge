@@ -291,7 +291,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 3 (chosen early) |
-| **Status** | Accepted (not implemented yet) |
+| **Status** | Accepted — design detailed in ADR-013 (not implemented yet) |
 
 **Context:** Need a GitOps reconciler; user preference for Argo CD over Flux.
 
@@ -345,7 +345,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 3 (chosen now; implement with Argo CD) |
-| **Status** | Accepted (not implemented yet) |
+| **Status** | Accepted — design detailed in ADR-013 (not implemented yet) |
 
 **Context:** Phase 2 stores demo DB credentials in Git (`deploy/k8s/secret.yaml`, Helm values). Need a production-shaped secrets path without blocking the working pipeline.
 
@@ -373,6 +373,97 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 
 ---
 
+## ADR-013 — Phase 3 design: Argo App of Apps + Vault Raft + ESO + GHCR
+
+| | |
+|--|--|
+| **Date** | 2026-08-07 |
+| **Phase** | 3 |
+| **Status** | Accepted (design; not implemented yet) |
+
+**Context:** Phase 2 pipeline works on kind via imperative Helm/`kubectl`. Need GitOps (G1–G5) and to remove plaintext DB credentials from Git, using the already-accepted Argo CD + Vault + ESO stack (ADR-010, ADR-012).
+
+### Locked choices (brainstorm)
+
+| Topic | Choice |
+|-------|--------|
+| Cluster | Same **kind** cluster for Argo, Vault, ESO, NATS, Postgres, app |
+| Argo shape | **App of Apps** (root Application → child Applications) |
+| Vault | Official Helm chart, **single-node Raft**, documented demo bootstrap (init/unseal/KV/auth) — not `vault -dev` |
+| Bootstrap boundary | `kind-up` creates kind + installs **Argo CD only** + applies root Application; Argo owns the rest |
+| Images | Pull **`ghcr.io/luizgnz/chessforge`** (public package or pull secret via ESO if private) |
+
+### Goal
+
+1. Argo continuously reconciles desired state from this Git repo.
+2. Vault stores sensitive values; ESO materializes Kubernetes `Secret`s (e.g. `chessforge-db` / `DATABASE_URL`).
+3. Plaintext `deploy/k8s/secret.yaml` (and DB passwords in Helm values committed to Git) go away.
+4. Sample pipeline still works: ingest → NATS → analyzers → Postgres.
+5. GitOps lifecycle is **met**.
+
+### Bootstrap (once, outside Argo)
+
+1. Create kind cluster.
+2. Install Argo CD (Helm or upstream install manifests).
+3. Apply root `Application` (app-of-apps) pointing at the repo path (e.g. `deploy/argocd/root.yaml` or `deploy/gitops/root-app.yaml`).
+
+No routine `kubectl apply` for app/platform after that.
+
+### Applications under the root
+
+| Child Application | Delivers |
+|-------------------|----------|
+| `vault` | Vault Helm chart, 1-node Raft |
+| `eso` | External Secrets Operator |
+| `nats` | NATS Helm chart with JetStream (reuse Phase 2 values) |
+| `postgres` | Bitnami PostgreSQL Helm chart — **no DB password committed in Git** |
+| `chessforge` | App YAML: `analyzer` Deployment + `ingest` Job; image from GHCR |
+| `secrets` | `SecretStore` / `ClusterSecretStore` + `ExternalSecret` → `chessforge-db` |
+
+Exact directory layout is an implementation detail; keep platform vs app separable so Phase 4 (KEDA) can add another child Application.
+
+### Secrets flow
+
+```text
+Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyzer (DATABASE_URL)
+```
+
+- Demo bootstrap (Job or documented script after Vault is ready): init/unseal if required, enable KV + Kubernetes auth, write demo path (e.g. `secret/chessforge/db`), create policy/role for ESO.
+- Repo holds only references (`ExternalSecret`, store config), not the password material.
+- Postgres Helm must not rely on plaintext password in Git; use a Secret created/synced for chart consumption and/or generate-once bootstrap that also seeds Vault (implementation picks one path; acceptance = nothing sensitive in Git).
+
+### Image policy
+
+- Manifests reference `ghcr.io/luizgnz/chessforge` with an explicit tag (`latest` acceptable for kind learning; prefer git SHA when wiring CI later).
+- If GHCR package is private: `imagePullSecret` supplied via ESO from Vault (same pattern as DB URL).
+
+### Success criteria
+
+1. Change analyzer replicas (or image tag) in Git → Argo syncs → cluster reflects it without routine `kubectl apply`.
+2. Manual drift on a managed Deployment → Argo shows OutOfSync (and restores if auto-sync is on).
+3. Workloads get `DATABASE_URL` from an ESO-synced Secret whose source is Vault.
+4. Sample ingest still yields ≥5 games in Postgres.
+5. GitOps checklist G1–G5 from the project vision is satisfied for the managed perimeter.
+
+### Out of scope (Phase 3)
+
+- KEDA (Phase 4), observability (Phase 5), chaos (Phase 6)
+- Query HTTP API / report Job
+- Multi-cluster / management cluster
+- Vault HA beyond single-node Raft demo
+- Recreating deleted `docs/superpowers/specs/` trees — this ADR is the design record
+
+### Rejected alternatives (this design pass)
+
+- Vault `-dev` only — too ephemeral for the learning goal of Raft bootstrap.
+- Argo managing only the app while Helm stays imperative for NATS/Postgres — weaker GitOps than the chosen bootstrap boundary.
+- Rendering all of Vault/NATS/Postgres as hand-written YAML — unnecessary toil.
+- Keeping plaintext `secret.yaml` in Git after Phase 3 ships — contradicts ADR-012.
+
+**GitOps impact:** **Met** when this design is implemented and the success criteria pass.
+
+---
+
 ## Decision index by phase
 
 | Phase | ADRs | GitOps met? |
@@ -380,7 +471,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 | 0 Local CLI | 001, 002, 003 | No |
 | 1 Docker + GHA + GHCR | 004 | No |
 | 2 kind + NATS + Postgres + app YAML | 005–009 | No / partial (Git + kubectl/helm) |
-| 3 Argo CD + Vault + ESO | 010, 012 | Yes (target) |
+| 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (target; design accepted) |
 | 4 KEDA | 011 | Yes if under Argo |
 | 5 Observability | (pending ADR) | Yes if under Argo |
 | 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
@@ -394,3 +485,4 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 | 2026-08-07 | Initial decision log (ADR-001 … ADR-011) committed with Phase 2 design direction. |
 | 2026-08-07 | Phase 2 pipeline implemented: `deploy/kind-up.sh`, ingest/worker modules, Helm NATS+Postgres, kind YAML. |
 | 2026-08-07 | ADR-012: Vault + ESO accepted; implement with Argo in Phase 3 (not Phase 2.5). |
+| 2026-08-07 | ADR-013: Phase 3 design accepted (App of Apps, Vault Raft, ESO, GHCR, Argo-owned platform). |

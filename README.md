@@ -74,7 +74,7 @@ Requirements: Docker, [`kind`](https://kind.sigs.k8s.io/), [`helm`](https://helm
 ```
 
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
-Still **not** GitOps (manual Helm/`kubectl`; Argo CD is later).
+Still **not** GitOps (manual Helm/`kubectl`). Phase 3 design (Argo + Vault + ESO) is in [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013**.
 
 ## What this demonstrates
 
