@@ -28,7 +28,6 @@
 | `.github/workflows/ci.yml` | `test` + `image` jobs |
 | `chessforge/engine.py` | Add Debian Stockfish path to candidates |
 | `README.md` | Document docker build/run + CI/GHCR |
-| `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md` | Mark Phase 1 done when verified |
 
 ---
 
