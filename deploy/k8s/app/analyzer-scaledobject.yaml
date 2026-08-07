@@ -1,0 +1,22 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: analyzer
+  namespace: chessforge
+spec:
+  scaleTargetRef:
+    name: analyzer
+  pollingInterval: 5
+  cooldownPeriod: 60
+  minReplicaCount: 0
+  maxReplicaCount: 4
+  triggers:
+    - type: nats-jetstream
+      metadata:
+        # Monitor port 8222 is on the headless Service (ClusterIP Service is 4222 only).
+        natsServerMonitoringEndpoint: chessforge-nats-headless.chessforge.svc.cluster.local:8222
+        account: "$G"
+        stream: CHESSFORGE
+        consumer: analyzers
+        lagThreshold: "1"
+        activationLagThreshold: "0"

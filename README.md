@@ -1,6 +1,6 @@
 # chessforge
 
-Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets.
+Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets and KEDA scale-to-zero on JetStream lag.
 
 ## Requirements
 
@@ -39,11 +39,12 @@ If anonymous `docker pull ghcr.io/luizgnz/chessforge:latest` still fails with un
 
 (`gh` needs `read:packages` / `write:packages` to change this via API; the default `gh auth` token often lacks those scopes.)
 
-## Phase 3 — GitOps on kind (Argo + Vault + ESO)
+## Phase 3–4 — GitOps on kind (Argo + Vault + ESO + KEDA)
 
 Bootstrap (once): create kind + install Argo CD + apply the root Application.  
-Argo reconciles Vault, ESO, NATS, Postgres, and the analyzer Deployment from Git.  
-DB credentials live in Vault; ESO syncs them to Secret `chessforge-db`.
+Argo reconciles Vault, ESO, KEDA, NATS, Postgres, the analyzer Deployment, and its ScaledObject from Git.  
+DB credentials live in Vault; ESO syncs them to Secret `chessforge-db`.  
+Analyzer replicas follow JetStream consumer lag (`minReplicaCount: 0`, `maxReplicaCount: 4`).
 
 ```bash
 ./deploy/kind-up.sh    # needs this repo pushed to GitHub (Argo pulls HEAD)
@@ -51,7 +52,17 @@ DB credentials live in Vault; ESO syncs them to Secret `chessforge-db`.
 ```
 
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
-Design record: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013**.
+Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA).
+
+Verify scaling:
+
+```bash
+kubectl -n argocd get application keda chessforge
+kubectl -n chessforge get deploy,scaledobject analyzer
+# idle → replicas toward 0; after ingest Job → scale up within max 4
+kubectl -n chessforge apply -f deploy/k8s/jobs/ingest-sample.yaml
+kubectl -n chessforge get deploy,scaledobject analyzer -w
+```
 
 Demo Vault unseal material is written to `.vault-init.json` (gitignored) and Secret `vault-init` in the `vault` namespace — kind learning only.
 
@@ -64,8 +75,9 @@ By default `kind-up` relies on a **public** GHCR pull. On Apple Silicon (or if p
 3. Distributed ingest → NATS JetStream → analyzer workers → Postgres.
 4. GitOps with Argo CD (app of apps).
 5. Secrets via Vault + External Secrets Operator (no DB password in Git).
+6. KEDA autoscaling on NATS JetStream lag (scale-to-zero).
 
-Next: KEDA, observability, Chaos Mesh.
+Next: observability, Chaos Mesh.
 
 ## Docs
 

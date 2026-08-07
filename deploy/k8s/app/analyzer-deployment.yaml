@@ -6,7 +6,7 @@ metadata:
   labels:
     app: analyzer
 spec:
-  replicas: 2
+  # Replica count is owned by KEDA ScaledObject `analyzer` (ADR-014).
   selector:
     matchLabels:
       app: analyzer

@@ -318,7 +318,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 4 (chosen early) |
-| **Status** | Accepted — design detailed in ADR-014 (not implemented yet) |
+| **Status** | Accepted — implemented per ADR-014 |
 
 **Context:** CPU autoscaling is a poor signal for queue depth with single-threaded Stockfish workers.
 
@@ -471,8 +471,8 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 4 |
-| **Status** | Proposed — awaiting review before implementation |
-| **Supersedes / details** | ADR-011 (direction); this ADR is the Phase 4 design record |
+| **Status** | Implemented |
+| **Supersedes / details** | ADR-011 (direction); this ADR is the Phase 4 design + implementation record |
 
 **Context:** Phase 3 GitOps is live (Argo app-of-apps, Vault+ESO, NATS JetStream, Postgres, analyzer Deployment at fixed `replicas: 2`). CPU HPA is a weak signal for queue work with Stockfish `Threads=1`. ADR-011 already chose KEDA on JetStream backlog; Phase 4 needs a concrete GitOps layout and scaler settings for kind learning.
 
@@ -496,7 +496,7 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | Scale target | Deployment `analyzer` in namespace `chessforge` |
 | Trigger | KEDA `nats-jetstream` |
 | Stream / consumer | `CHESSFORGE` / `analyzers` (from `chessforge/messaging.py`) |
-| Monitoring endpoint | NATS HTTP monitor (chart default `config.monitor.enabled: true`, port **8222**), e.g. `chessforge-nats.chessforge.svc.cluster.local:8222` — confirm Service name at implement time |
+| Monitoring endpoint | NATS HTTP monitor port **8222** on headless Service `chessforge-nats-headless.chessforge.svc.cluster.local:8222` (ClusterIP `chessforge-nats` exposes 4222 only) |
 | Account | `$G` (default; no NATS accounts configured) |
 | Replica bounds | **`minReplicaCount: 0`**, **`maxReplicaCount: 4`** (kind-friendly; demonstrates scale-to-zero) |
 | Lag | `lagThreshold: "1"` (≈ one pending/unacked message per replica target); `activationLagThreshold: "0"` (wake from zero when any lag) |
@@ -576,7 +576,7 @@ ingest Job ──publish──► JetStream CHESSFORGE / durable analyzers
 | 1 Docker + GHA + GHCR | 004 | No |
 | 2 kind + NATS + Postgres + app YAML | 005–009 | No / partial (Git + kubectl/helm) |
 | 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (when kind-up Phase 3 smoke passes) |
-| 4 KEDA | 011, **014** | Yes if under Argo (design in 014) |
+| 4 KEDA | 011, **014** | Yes (KEDA Helm + ScaledObject under Argo) |
 | 5 Observability | (pending ADR) | Yes if under Argo |
 | 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
 
@@ -594,3 +594,4 @@ ingest Job ──publish──► JetStream CHESSFORGE / durable analyzers
 | 2026-08-07 | Phase 3 smoke verified on kind: Vault→ESO→Secret, ingest enqueued 5, Postgres games=5; Postgres chart 18.8.6; native kind image load. |
 | 2026-08-07 | GHCR package treated as **public** while the repo is public; kind pulls without imagePullSecret. Private package + ESO dockerconfig pull secret deferred. |
 | 2026-08-07 | ADR-014: Phase 4 design proposed (KEDA Helm via Argo, ScaledObject on analyzer, nats-jetstream lag, min 0 / max 4). |
+| 2026-08-07 | ADR-014 implemented: Argo Application `keda` (Helm 2.20.2), ScaledObject on analyzer (`nats-jetstream`, CHESSFORGE/analyzers, min 0 / max 4), Deployment replicas owned by KEDA. |
