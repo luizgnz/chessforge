@@ -12,7 +12,7 @@ spec:
   sources:
     - repoURL: https://charts.bitnami.com/bitnami
       chart: postgresql
-      targetRevision: 16.4.1
+      targetRevision: 18.8.6
       helm:
         releaseName: chessforge
         valueFiles:

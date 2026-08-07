@@ -65,6 +65,12 @@ for i in $(seq 1 60); do
 done
 kubectl -n "$NS" get secret chessforge-db >/dev/null
 
+# GHCR :latest from CI is linux/amd64; kind on Apple Silicon needs a native image.
+echo "==> build + kind load $IMAGE (node-native platform)"
+DOCKER_BUILDKIT=1 docker build -t "$IMAGE" "$ROOT"
+kind load docker-image "$IMAGE" --name "$CLUSTER"
+kubectl -n "$NS" rollout restart deployment/analyzer 2>/dev/null || true
+
 echo "==> wait for nats + postgres + analyzer"
 for i in $(seq 1 90); do
   n="$(kubectl -n argocd get application nats -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
@@ -77,15 +83,6 @@ for i in $(seq 1 90); do
   sleep 10
 done
 
-kubectl -n "$NS" rollout status deployment/analyzer --timeout=300s
-
-echo "==> ensure image on kind nodes: $IMAGE"
-if ! docker pull "$IMAGE"; then
-  echo "GHCR pull failed; building locally and tagging as $IMAGE"
-  DOCKER_BUILDKIT=1 docker build -t "$IMAGE" "$ROOT"
-fi
-kind load docker-image "$IMAGE" --name "$CLUSTER"
-kubectl -n "$NS" rollout restart deployment/analyzer
 kubectl -n "$NS" rollout status deployment/analyzer --timeout=300s
 
 echo "==> ingest smoke Job"
