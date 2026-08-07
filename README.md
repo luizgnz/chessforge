@@ -1,6 +1,6 @@
 # chessforge
 
-Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets and KEDA scale-to-zero on JetStream lag.
+Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets, KEDA scale-to-zero on JetStream lag, and Prometheus/Grafana observability.
 
 ## Requirements
 
@@ -39,12 +39,13 @@ If anonymous `docker pull ghcr.io/luizgnz/chessforge:latest` still fails with un
 
 (`gh` needs `read:packages` / `write:packages` to change this via API; the default `gh auth` token often lacks those scopes.)
 
-## Phase 3–4 — GitOps on kind (Argo + Vault + ESO + KEDA)
+## Phase 3–5 — GitOps on kind (Argo + Vault + ESO + KEDA + monitoring)
 
 Bootstrap (once): create kind + install Argo CD + apply the root Application.  
-Argo reconciles Vault, ESO, KEDA, NATS, Postgres, the analyzer Deployment, and its ScaledObject from Git.  
+Argo reconciles Vault, ESO, KEDA, **kube-prometheus-stack**, NATS, Postgres, the analyzer Deployment, and its ScaledObject from Git.  
 DB credentials live in Vault; ESO syncs them to Secret `chessforge-db`.  
-Analyzer replicas follow JetStream consumer lag (`minReplicaCount: 0`, `maxReplicaCount: 4`).
+Analyzer replicas follow JetStream consumer lag (`minReplicaCount: 0`, `maxReplicaCount: 4`).  
+Prometheus scrapes NATS (promExporter), analyzer `/metrics`, and postgres-exporter (`chessforge_lost_games`).
 
 ```bash
 ./deploy/kind-up.sh    # needs this repo pushed to GitHub (Argo pulls HEAD)
@@ -52,7 +53,17 @@ Analyzer replicas follow JetStream consumer lag (`minReplicaCount: 0`, `maxRepli
 ```
 
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
-Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA).
+Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA), **ADR-015** (observability).
+
+### Grafana (port-forward)
+
+```bash
+kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
+# open http://localhost:3000  — admin / chessforge
+# dashboard: "Chessforge pipeline"
+```
+
+Alertmanager (optional): `kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-alertmanager 9093:9093`
 
 Demo Vault unseal material is written to `.vault-init.json` (gitignored) and Secret `vault-init` in the `vault` namespace — kind learning only.
 
@@ -67,9 +78,10 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 | 0 Local | `./deploy/scripts/smoke-local.sh` | pytest green |
 | 0 + Stockfish | `RUN_ANALYZE=1 ./deploy/scripts/smoke-local.sh` | `lost=0` |
 | 1 Docker | `./deploy/scripts/smoke-docker.sh` | `lost=0` (1 game; same as CI) |
-| 3–4 Bring-up | `./deploy/kind-up.sh` | Argo Healthy; Secret `chessforge-db`; `games>=5` |
+| 3–5 Bring-up | `./deploy/kind-up.sh` | Argo Healthy; Secret `chessforge-db`; `games>=5` |
 | 2/3 Pipeline | `./deploy/scripts/smoke-pipeline.sh` | ingest complete; `games>=5` |
 | 4 KEDA | `./deploy/scripts/smoke-keda.sh` | idle `0→N` after ingest; `games>=5` |
+| 5 Observability | `./deploy/scripts/smoke-observability.sh` | monitoring Healthy; Prometheus+Grafana Running |
 
 ```bash
 ./deploy/scripts/smoke-local.sh
@@ -77,6 +89,7 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 ./deploy/kind-up.sh
 ./deploy/scripts/smoke-pipeline.sh   # re-check without recreating kind
 ./deploy/scripts/smoke-keda.sh       # scale-to-zero then scale-up
+./deploy/scripts/smoke-observability.sh
 ```
 
 ## What this demonstrates
@@ -87,8 +100,9 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 4. GitOps with Argo CD (app of apps).
 5. Secrets via Vault + External Secrets Operator (no DB password in Git).
 6. KEDA autoscaling on NATS JetStream lag (scale-to-zero).
+7. Prometheus + Grafana pipeline dashboard and `lost > 0` alert (port-forward).
 
-Next: observability, Chaos Mesh.
+Next: Chaos Mesh.
 
 ## Docs
 

@@ -24,6 +24,9 @@ spec:
             - python
             - -m
             - chessforge.worker
+          ports:
+            - name: metrics
+              containerPort: 9090
           env:
             - name: NATS_URL
               value: nats://chessforge-nats:4222
@@ -34,6 +37,8 @@ spec:
                   key: DATABASE_URL
             - name: STOCKFISH_PATH
               value: /usr/games/stockfish
+            - name: METRICS_PORT
+              value: "9090"
           resources:
             requests:
               cpu: "500m"

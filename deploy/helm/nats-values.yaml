@@ -4,3 +4,12 @@ config:
     fileStore:
       enabled: true
       dir: /data
+
+# Native NATS :8222 has no /metrics (JSON monitor only). Sidecar exporter scrapes
+# localhost:8222 and exposes Prometheus on :7777 (ADR-015).
+promExporter:
+  enabled: true
+  port: 7777
+  monitorDomain: localhost
+  podMonitor:
+    enabled: true

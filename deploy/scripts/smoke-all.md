@@ -8,9 +8,10 @@ Reproducible verification paths used across phases. Scripts live next to this fi
 | Phase 0 — local + Stockfish | `RUN_ANALYZE=1 ./deploy/scripts/smoke-local.sh` | pytest green; `lost=0` |
 | Phase 1 — Docker image | `./deploy/scripts/smoke-docker.sh` | `lost=0` (1 game) |
 | Phase 1 — CI (same as Docker) | GitHub Actions `image` job Smoke step | container exit 0 |
-| Phase 3–4 — full bring-up | `./deploy/kind-up.sh` | Argo Healthy; Vault→ESO Secret; `games>=5` |
+| Phase 3–5 — full bring-up | `./deploy/kind-up.sh` | Argo Healthy; Vault→ESO Secret; monitoring; `games>=5` |
 | Phase 2/3 — pipeline only | `./deploy/scripts/smoke-pipeline.sh` | ingest Job complete; `games>=5` |
 | Phase 4 — KEDA scale | `./deploy/scripts/smoke-keda.sh` | idle `0` (or warn); after ingest replicas `>0`; `games>=5` |
+| Phase 5 — Observability | `./deploy/scripts/smoke-observability.sh` | monitoring Synced/Healthy; Prometheus+Grafana Running |
 | Teardown | `./deploy/kind-down.sh` | kind cluster deleted |
 
 All script text is English-only. Prefer these focused smokes after `kind-up` rather than inventing longer e2e suites.
@@ -62,7 +63,7 @@ docker run --rm chessforge:local
 
 ---
 
-## Phase 3–4 — full kind bring-up (GitOps + Vault/ESO + KEDA)
+## Phase 3–5 — full kind bring-up (GitOps + Vault/ESO + KEDA + monitoring)
 
 Creates kind, installs Argo CD, applies root Application, bootstraps Vault, waits for the stack, runs ingest, asserts Postgres count.
 
@@ -71,7 +72,7 @@ Creates kind, installs Argo CD, applies root Application, bootstraps Vault, wait
 # FORCE_KIND_LOAD=1 ./deploy/kind-up.sh   # build + kind load if needed
 ```
 
-Success line: `SUCCESS Phase 3–4 smoke: games=N` with `N >= 5`.
+Success line: `SUCCESS Phase 3–5 smoke: games=N` with `N >= 5`.
 
 Also verify:
 
@@ -79,6 +80,7 @@ Also verify:
 kubectl -n argocd get applications
 kubectl -n chessforge get secret chessforge-db
 kubectl -n chessforge get deploy,scaledobject analyzer
+kubectl -n monitoring get pods
 ```
 
 Demo Vault unseal material: `.vault-init.json` (gitignored) and Secret `vault-init` in namespace `vault`. Re-bootstrap: `./deploy/scripts/vault-bootstrap.sh`.
@@ -132,13 +134,39 @@ Notes:
 
 ---
 
+## Phase 5 — Observability
+
+```bash
+./deploy/scripts/smoke-observability.sh
+```
+
+Grafana (port-forward only; no Ingress):
+
+```bash
+kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
+# http://localhost:3000 — admin / chessforge
+# dashboard: Chessforge pipeline
+```
+
+Alertmanager: `kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-alertmanager 9093:9093`
+
+Notes:
+
+- Argo Application `monitoring` installs kube-prometheus-stack (wave 2).
+- NATS: chart `promExporter` sidecar on `:7777` + PodMonitor (native `:8222/metrics` is 404).
+- Analyzer: `prometheus_client` on `:9090` (may be idle/scale-to-zero).
+- Lost games: postgres-exporter custom query → `chessforge_lost_games` → alert `ChessforgeLostGames`.
+
+---
+
 ## Suggested order after a fresh clone
 
 ```bash
 ./deploy/scripts/smoke-local.sh
 ./deploy/scripts/smoke-docker.sh
-./deploy/kind-up.sh                 # full GitOps + pipeline
-./deploy/scripts/smoke-pipeline.sh  # re-check without recreating kind
-./deploy/scripts/smoke-keda.sh      # idle → scale-up after ingest
+./deploy/kind-up.sh                      # full GitOps + pipeline
+./deploy/scripts/smoke-pipeline.sh       # re-check without recreating kind
+./deploy/scripts/smoke-keda.sh           # idle → scale-up after ingest
+./deploy/scripts/smoke-observability.sh  # Prometheus/Grafana + scrapes
 ./deploy/kind-down.sh
 ```

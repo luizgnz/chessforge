@@ -574,7 +574,7 @@ ingest Job ──publish──► JetStream CHESSFORGE / durable analyzers
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 5 |
-| **Status** | Accepted — design detailed here (not implemented yet) |
+| **Status** | Implemented |
 | **Depends on** | ADR-013 (GitOps), ADR-014 (KEDA / NATS monitor :8222) |
 
 **Context:** Phases 3–4 deliver a GitOps pipeline on kind (Argo app-of-apps, Vault+ESO, NATS JetStream, Postgres, KEDA scale-to-zero). Operators still lack a first-class view of the success metrics already used in smokes and design talk: **queue depth**, **games/sec**, **failed**, **lost**, **p95 analysis latency**, with an alert when **lost > 0**. Phase 5 adds a minimal scrape + dashboard + alert path under Argo without turning kind into a full observability platform.
@@ -593,12 +593,12 @@ ingest Job ──publish──► JetStream CHESSFORGE / durable analyzers
 
 | Topic | Choice |
 |-------|--------|
-| Stack | **`kube-prometheus-stack`** via new Argo child Application `monitoring` (official prometheus-community Helm chart; pin `targetRevision` at implement time, same style as `keda` 2.20.2) |
+| Stack | **`kube-prometheus-stack`** via Argo child Application `monitoring` (prometheus-community Helm chart **`88.2.0`**) |
 | Namespace | `monitoring` |
 | Sync wave | **`monitoring` at wave `2`** (with/after `secrets`, before NATS/app) so Operator CRDs exist before any ServiceMonitor/PodMonitor/PrometheusRule; NATS/app stay wave `3`/`4` |
 | Grafana access | **port-forward only** (no Ingress / auth IdP) — kind learning |
 | Retention / size | Short Prometheus retention (e.g. **6–24h**); trim chart defaults that fight kind (avoid extra long-term storage / Thanos); keep Alertmanager enabled (needed for alert demo) |
-| NATS scrape | Enable/confirm NATS HTTP monitor **:8222**; scrape **`/metrics`** on headless Service `chessforge-nats-headless.chessforge.svc:8222` (same endpoint family KEDA already uses). Prefer **ServiceMonitor** (or PodMonitor) owned by the monitoring app / values — not a second exporter pod unless `/metrics` is unavailable |
+| NATS scrape | Monitor **:8222** stays for KEDA (`/jsz` JSON). Native NATS has **no** `:8222/metrics` (404). Implementation enables chart **`promExporter`** sidecar (`natsio/prometheus-nats-exporter` on **:7777**) + **PodMonitor** (allowed by design when `/metrics` is unavailable). Sidecar scrapes localhost:8222 |
 | App metrics | **Phase 5 adds minimal `prometheus_client`** on the **analyzer** only (in-process HTTP `/metrics`, e.g. port `9090`). **Not** exporter-only. **No** Pushgateway. **No** prometheus_client on the ingest Job (Job scrapes die with the pod) |
 | Analyzer series (minimal) | Counters: `chessforge_games_analyzed_total`, `chessforge_games_failed_total`; histogram: `chessforge_analyze_duration_seconds` (for **p95** / games/sec via `rate()`). Optional gauge later — not required to start |
 | Queue depth | From **NATS** Prometheus metrics / JetStream consumer lag series (exact metric names confirmed at implement against NATS version) — same backlog signal KEDA uses, now on a graph |
@@ -629,9 +629,9 @@ Root Application already globs `deploy/gitops/applications/` — adding `monitor
 ### Metrics flow
 
 ```text
-NATS :8222/metrics ──► ServiceMonitor ──► Prometheus
+NATS promExporter :7777/metrics (sidecar ← :8222) ──► PodMonitor ──► Prometheus
 Analyzer :9090/metrics (prometheus_client) ──► ServiceMonitor ──► Prometheus
-Postgres (custom lost query via postgres-exporter) ──► Prometheus
+Postgres (custom lost query via postgres-exporter) ──► ServiceMonitor ──► Prometheus
                               │
                               ▼
                      Grafana dashboard (port-forward)
@@ -678,7 +678,7 @@ Postgres (custom lost query via postgres-exporter) ──► Prometheus
 | 2 kind + NATS + Postgres + app YAML | 005–009 | No / partial (Git + kubectl/helm) |
 | 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (when kind-up Phase 3 smoke passes) |
 | 4 KEDA | 011, **014** | Yes (KEDA Helm + ScaledObject under Argo) |
-| 5 Observability | **015** | Yes when monitoring under Argo (design accepted; not implemented yet) |
+| 5 Observability | **015** | Yes (kube-prometheus-stack + scrapes/dashboard/alert under Argo) |
 | 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
 
 ---
@@ -698,3 +698,4 @@ Postgres (custom lost query via postgres-exporter) ──► Prometheus
 | 2026-08-07 | ADR-014 implemented: Argo Application `keda` (Helm 2.20.2), ScaledObject on analyzer (`nats-jetstream`, CHESSFORGE/analyzers, min 0 / max 4), Deployment replicas owned by KEDA. |
 | 2026-08-07 | Smoke scripts/docs added: `deploy/scripts/smoke-{local,docker,pipeline,keda}.sh`, cheatsheet `deploy/scripts/smoke-all.md`, README "Smoke tests" section (wraps kind-up + focused checks; no new long e2e). |
 | 2026-08-07 | ADR-015: Phase 5 design proposed (kube-prometheus-stack via Argo, NATS :8222 + analyzer prometheus_client + postgres lost query, one dashboard, alert lost>0). |
+| 2026-08-07 | ADR-015 implemented: Argo `monitoring` (kube-prometheus-stack 88.2.0), NATS promExporter+PodMonitor (no native :8222/metrics), analyzer `prometheus_client` :9090, postgres-exporter `chessforge_lost_games` + PrometheusRule, one Grafana dashboard; smoke-observability.sh. |

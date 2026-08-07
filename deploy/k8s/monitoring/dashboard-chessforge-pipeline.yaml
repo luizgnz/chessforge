@@ -1,0 +1,203 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chessforge-pipeline-dashboard
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    grafana_dashboard: "1"
+    app: chessforge
+data:
+  chessforge-pipeline.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "id": 1,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "expr": "sum(nats_consumer_num_pending{consumer_name=\"analyzers\",stream_name=\"CHESSFORGE\"}) or sum(nats_jetstream_consumer_num_pending{consumer_name=\"analyzers\",stream_name=\"CHESSFORGE\"}) or vector(0)",
+              "legendFormat": "queue depth (num_pending)",
+              "refId": "A"
+            }
+          ],
+          "title": "Queue depth (NATS JetStream lag)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "expr": "kube_deployment_status_replicas{namespace=\"chessforge\",deployment=\"analyzer\"}",
+              "legendFormat": "replicas",
+              "refId": "A"
+            },
+            {
+              "expr": "kube_deployment_status_replicas_available{namespace=\"chessforge\",deployment=\"analyzer\"}",
+              "legendFormat": "available",
+              "refId": "B"
+            }
+          ],
+          "title": "Analyzer replicas",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+          "id": 3,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(chessforge_games_analyzed_total[5m]))",
+              "legendFormat": "games/sec",
+              "refId": "A"
+            }
+          ],
+          "title": "Games / sec",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+          "id": 4,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(chessforge_games_failed_total[5m]))",
+              "legendFormat": "failed/sec",
+              "refId": "A"
+            }
+          ],
+          "title": "Failed rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+          "id": 5,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "chessforge_lost_games",
+              "legendFormat": "lost",
+              "refId": "A"
+            }
+          ],
+          "title": "Lost games",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+          "id": 6,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(chessforge_analyze_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95 analyze",
+              "refId": "A"
+            }
+          ],
+          "title": "Analyze latency p95",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 39,
+      "tags": ["chessforge"],
+      "templating": { "list": [] },
+      "time": { "from": "now-30m", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "Chessforge pipeline",
+      "uid": "chessforge-pipeline",
+      "version": 1
+    }

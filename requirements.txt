@@ -2,3 +2,4 @@ chess==1.10.0
 zstandard==0.22.0
 nats-py==2.9.0
 psycopg[binary]==3.2.3
+prometheus_client==0.21.1

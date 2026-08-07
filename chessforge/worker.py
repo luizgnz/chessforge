@@ -19,6 +19,12 @@ from chessforge.messaging import (
     ensure_stream_and_consumer,
     pull_subscribe,
 )
+from chessforge.metrics import (
+    ANALYZE_DURATION,
+    GAMES_ANALYZED,
+    GAMES_FAILED,
+    start_metrics_server,
+)
 from chessforge.pg import connect as pg_connect
 from chessforge.pg import count_games, init_db, persist_game
 
@@ -37,6 +43,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def run(args: argparse.Namespace) -> int:
     worker = socket.gethostname()
+    metrics_port = int(os.environ.get("METRICS_PORT", "9090"))
+    start_metrics_server(metrics_port)
+
     conn = pg_connect()
     init_db(conn)
     before = count_games(conn)
@@ -54,7 +63,10 @@ async def run(args: argparse.Namespace) -> int:
     skipped = 0
     last_msg_at = time.perf_counter()
 
-    print(f"WORKER {worker} starting | engine={engine_version}", flush=True)
+    print(
+        f"WORKER {worker} starting | engine={engine_version} | metrics=:{metrics_port}",
+        flush=True,
+    )
 
     try:
         while True:
@@ -84,7 +96,9 @@ async def run(args: argparse.Namespace) -> int:
                         # Still analyze; trust payload game_id for persistence key.
                         pass
 
+                    t0 = time.perf_counter()
                     summary, evals = analyze_game(engine, game, depth)
+                    ANALYZE_DURATION.observe(time.perf_counter() - t0)
                     inserted = persist_game(
                         conn,
                         game_id=gid,
@@ -97,6 +111,7 @@ async def run(args: argparse.Namespace) -> int:
                     )
                     if inserted:
                         analyzed += 1
+                        GAMES_ANALYZED.inc()
                     else:
                         skipped += 1
                     print(
@@ -108,6 +123,7 @@ async def run(args: argparse.Namespace) -> int:
                     await msg.ack()
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
+                    GAMES_FAILED.inc()
                     print(f"error game: {exc}", flush=True)
                     # Nak for redelivery; terminal poison would need a DLQ (later).
                     try:

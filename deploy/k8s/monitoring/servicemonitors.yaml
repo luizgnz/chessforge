@@ -1,0 +1,41 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: chessforge-analyzer
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app: chessforge
+spec:
+  namespaceSelector:
+    matchNames:
+      - chessforge
+  selector:
+    matchLabels:
+      app: analyzer
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: chessforge-postgres-exporter
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app: chessforge
+spec:
+  namespaceSelector:
+    matchNames:
+      - chessforge
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

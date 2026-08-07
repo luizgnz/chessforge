@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: chessforge-pipeline
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app: chessforge
+spec:
+  groups:
+    - name: chessforge.pipeline
+      rules:
+        - alert: ChessforgeLostGames
+          expr: chessforge_lost_games > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Chessforge lost games detected
+            description: >-
+              Ingest enqueued more games than Postgres has persisted
+              (chessforge_lost_games={{ $value }}).
