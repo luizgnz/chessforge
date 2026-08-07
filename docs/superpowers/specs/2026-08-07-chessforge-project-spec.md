@@ -1,275 +1,275 @@
-# Chessforge — especificaciones del proyecto
+# Chessforge — project specification
 
-**Fecha:** 2026-08-07  
-**Estado del documento:** borrador vivo (la Fase 0 está implementada)  
-**GitOps preferido:** Argo CD (no Flux)
+**Date:** 2026-08-07  
+**Document status:** living draft (Phase 0 and Phase 1 are implemented)  
+**Preferred GitOps tool:** Argo CD (not Flux)
 
-## 1. Visión
+## 1. Vision
 
-Chessforge analiza partidas de ajedrez en masa con Stockfish para aprender sistemas distribuidos y chaos engineering sobre Kubernetes.
+Chessforge analyzes chess games at scale with Stockfish to learn distributed systems and chaos engineering on Kubernetes.
 
-**Producto (qué hace):**
+**Product (what it does):**
 
-1. Ingiere partidas PGN.
-2. Evalúa cada jugada con Stockfish (carga CPU-bound, reproducible).
-3. Persiste métricas (ACPL, blunders, primera jugada-blunder, etc.).
-4. Expone consultas/reportes (p. ej. blunders por apertura ECO y banda Elo).
-5. Verifica integridad: `enqueued` vs `analyzed` vs `lost`.
+1. Ingests PGN games.
+2. Evaluates each move with Stockfish (CPU-bound, reproducible workload).
+3. Persists metrics (ACPL, blunders, first-blunder ply, etc.).
+4. Exposes queries/reports (e.g. blunders by ECO opening and Elo band).
+5. Verifies integrity: `enqueued` vs `analyzed` vs `lost`.
 
-**Plataforma (para qué sirve el stack):**
+**Platform (what the stack is for):**
 
-- Colas, autoscaling por eventos, GitOps y experimentos de caos con un criterio de éxito medible (`lost=0` tras turbulencia).
+- Queues, event-driven autoscaling, GitOps, and chaos experiments with a measurable success criterion (`lost=0` after turbulence).
 
-## 2. Ciclo de vida GitOps (definición de “cumplido”)
+## 2. GitOps lifecycle (definition of “met”)
 
-GitOps se considera **cumplido** solo si se dan **todas** estas condiciones:
+GitOps is considered **met** only when **all** of these hold:
 
-| # | Condición | Descripción |
+| # | Condition | Description |
 |---|-----------|-------------|
-| G1 | Fuente de verdad en Git | Manifiestos / Helm / Kustomize del cluster viven en el repo (o repo GitOps dedicado). |
-| G2 | Cambios vía Git | El cluster no se “arregla” a mano con `kubectl apply` como flujo normal; se cambia Git. |
-| G3 | Agente de reconciliación | Argo CD observa Git y aplica el estado deseado al cluster. |
-| G4 | Drift detection | Si alguien muda el cluster fuera de Git, Argo lo detecta (y preferiblemente lo reconcilia). |
-| G5 | App + infra declarativas | Servicios chessforge (ingest, workers, API) y dependencias (NATS, DB, KEDA, etc.) están declarados y versionados. |
+| G1 | Desired state in Git | Cluster manifests / Helm / Kustomize live in the repo (or a dedicated GitOps repo). |
+| G2 | Changes via Git | The cluster is not “fixed” with routine `kubectl apply`; Git is changed instead. |
+| G3 | Reconciliation agent | Argo CD watches Git and applies desired state to the cluster. |
+| G4 | Drift detection | If someone mutates the cluster outside Git, Argo detects it (and preferably reconciles). |
+| G5 | Declarative app + infra | Chessforge services (ingest, workers, API) and dependencies (NATS, DB, KEDA, etc.) are declared and versioned. |
 
-**Nota:** Tener manifiestos en Git pero aplicarlos solo con `kubectl` **no** es GitOps completo (faltan G3–G4). Tener solo código de aplicación en Git **tampoco** (faltan G1–G5 del despliegue).
+**Note:** Manifests in Git applied only with `kubectl` is **not** full GitOps (missing G3–G4). Application code alone in Git is also **not** enough (missing G1–G5 for deployment).
 
-### Estado global hoy
+### Global status today
 
-| Pregunta | Respuesta |
-|----------|-----------|
-| ¿Se cumple el ciclo de vida GitOps ahora? | **No** |
-| ¿Qué lo desbloquea? | Fase 3 (Argo CD reconciliando manifiestos del cluster) |
-| Herramienta elegida | **Argo CD** |
+| Question | Answer |
+|----------|--------|
+| Is the GitOps lifecycle met now? | **No** |
+| What unlocks it? | Phase 3 (Argo CD reconciling cluster manifests) |
+| Chosen tool | **Argo CD** |
 
-## 3. Fases
+## 3. Phases
 
-Leyenda de estado: `hecho` · `pendiente` · `parcial`
+Status legend: `done` · `pending` · `partial`
 
-### Fase 0 — Borrador local (sin Kubernetes)
+### Phase 0 — Local draft (no Kubernetes)
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `hecho` |
-| **Objetivo** | Probar el loop de producto sin cluster |
-| **Entrada** | PGN (`data/sample.pgn`) |
-| **Salida** | SQLite + CLI `report` |
-| **GitOps** | **No cumple** (no hay cluster ni Argo; solo código en Git) |
+| **Status** | `done` |
+| **Goal** | Prove the product loop without a cluster |
+| **Input** | PGN (`data/sample.pgn`) |
+| **Output** | SQLite + CLI `report` |
+| **GitOps** | **Not met** (no cluster or Argo; code in Git only) |
 
-**Tecnologías**
+**Technologies**
 
-| Tecnología | Rol |
-|------------|-----|
+| Technology | Role |
+|------------|------|
 | Python 3.12+ | App / CLIs |
-| `python-chess` | Parse PGN + UCI |
-| Stockfish | Motor de análisis (`Threads=1`, depth fija) |
-| SQLite | Persistencia local |
-| pytest | Tests unitarios |
+| `python-chess` | PGN parse + UCI |
+| Stockfish | Analysis engine (`Threads=1`, fixed depth) |
+| SQLite | Local persistence |
+| pytest | Unit tests |
 
-**Entregables**
+**Deliverables**
 
-- Paquete `chessforge/` (`analyze`, `report`, `db`, `engine`, `analyze_game`)
-- Spec/plan locales en `docs/superpowers/`
-- Criterio de integridad: `lost=0` en un run
+- Package `chessforge/` (`analyze`, `report`, `db`, `engine`, `analyze_game`)
+- Local specs/plans under `docs/superpowers/`
+- Integrity criterion: `lost=0` on a run
 
-**Fuera de alcance de esta fase:** K8s, NATS, KEDA, Postgres, Argo, Chaos Mesh, HTTP API.
+**Out of scope for this phase:** K8s, NATS, KEDA, Postgres, Argo, Chaos Mesh, HTTP API.
 
 ---
 
-### Fase 1 — Contenedor y contrato de worker
+### Phase 1 — Container and worker contract
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `hecho` (Docker + GHA; ver spec dedicado) |
+| **Status** | `done` (Docker + GHA; see dedicated spec) |
 | **Spec** | `docs/superpowers/specs/2026-08-07-phase1-docker-gha-design.md` |
-| **Objetivo** | Empaquetar el analyzer como imagen reproducible; mismo contrato de análisis que en local |
-| **GitOps** | **No cumple** (imagen/CI sí; aún no hay reconciliación de cluster) |
+| **Goal** | Package the analyzer as a reproducible image; same analysis contract as local |
+| **GitOps** | **Not met** (image/CI yes; no cluster reconciliation yet) |
 
-**Tecnologías**
+**Technologies**
 
-| Tecnología | Rol |
-|------------|-----|
-| Docker (slim-bookworm multi-stage) | Imagen del worker (Stockfish apt + app) |
-| Python (mismo código Fase 0) | Lógica de análisis |
-| GitHub Actions + GHCR | pytest, build, smoke, push `:sha` / `:latest` en `main` |
+| Technology | Role |
+|------------|------|
+| Docker (slim-bookworm multi-stage) | Worker image (apt Stockfish + app) |
+| Python (same Phase 0 code) | Analysis logic |
+| GitHub Actions + GHCR | pytest, build, smoke, push `:sha` / `:latest` on `main` |
 
-**Entregables**
+**Deliverables**
 
 - `Dockerfile` + `.dockerignore` + `.github/workflows/ci.yml`
-- `STOCKFISH_PATH=/usr/games/stockfish` en imagen; CMD smoke con `--max-games 1`
-- Smoke local: `docker build -t chessforge:local . && docker run --rm chessforge:local`
+- `STOCKFISH_PATH=/usr/games/stockfish` in image; CMD smoke with `--max-games 1`
+- Local smoke: `docker build -t chessforge:local . && docker run --rm chessforge:local`
 
 ---
 
-### Fase 2 — Kubernetes mínimo + cola + persistencia
+### Phase 2 — Minimal Kubernetes + queue + persistence
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `pendiente` |
-| **Objetivo** | Pipeline distribuido: ingest → cola → workers → DB; API/consulta básica |
-| **GitOps** | **No cumple** si el deploy es manual con `kubectl`; **parcial** si los manifiestos ya viven en Git pero aún no hay Argo |
+| **Status** | `pending` |
+| **Goal** | Distributed pipeline: ingest → queue → workers → DB; basic query API |
+| **GitOps** | **Not met** if deploy is manual `kubectl`; **partial** if manifests already live in Git but Argo is not wired yet |
 
-**Tecnologías**
+**Technologies**
 
-| Tecnología | Rol |
-|------------|-----|
-| Kubernetes | Orquestación |
-| NATS JetStream | Cola / redelivery (`ack_wait` alineado con duración del análisis) |
-| Postgres | Reemplazo de SQLite en cluster |
-| Deployments / Jobs | `ingest`, `analyzer` workers, servicio de consulta |
-| Manifiestos (YAML / Kustomize) | Estado deseado en repo |
+| Technology | Role |
+|------------|------|
+| Kubernetes | Orchestration |
+| NATS JetStream | Queue / redelivery (`ack_wait` aligned with analysis duration) |
+| Postgres | SQLite replacement in the cluster |
+| Deployments / Jobs | `ingest`, `analyzer` workers, query service |
+| Manifests (YAML / Kustomize) | Desired state in repo |
 
-**Entregables**
+**Deliverables**
 
-- Ingest publica juegos; workers consumen y persisten
-- Idempotencia (`ON CONFLICT DO NOTHING` o equivalente) ante redelivery
-- Métrica de integridad por run (`enqueued` / `analyzed` / `lost`)
-- `terminationGracePeriodSeconds` y límites de CPU pensados (evitar throttle silencioso; Stockfish 1 hilo)
+- Ingest publishes games; workers consume and persist
+- Idempotency (`ON CONFLICT DO NOTHING` or equivalent) under redelivery
+- Per-run integrity metric (`enqueued` / `analyzed` / `lost`)
+- Thoughtful `terminationGracePeriodSeconds` and CPU limits (avoid silent throttle; Stockfish 1 thread)
 
 ---
 
-### Fase 3 — GitOps con Argo CD
+### Phase 3 — GitOps with Argo CD
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `pendiente` |
-| **Objetivo** | Git como única fuente de verdad del cluster; Argo reconcilia |
-| **GitOps** | **Sí cumple** (G1–G5), para el perímetro que Argo gestione |
+| **Status** | `pending` |
+| **Goal** | Git as the single source of truth for the cluster; Argo reconciles |
+| **GitOps** | **Met** (G1–G5) for the perimeter Argo manages |
 
-**Tecnologías**
+**Technologies**
 
-| Tecnología | Rol |
-|------------|-----|
-| Git | Fuente de verdad |
-| Argo CD | Pull/reconcile del estado deseado |
-| Kustomize o Helm | Empaquetado declarativo (elegir uno y mantenerlo) |
+| Technology | Role |
+|------------|------|
+| Git | Source of truth |
+| Argo CD | Pull/reconcile desired state |
+| Kustomize or Helm | Declarative packaging (pick one and keep it) |
 
-**Entregables**
+**Deliverables**
 
-- Application(s) Argo apuntando al repo/path de manifiestos
-- Flujo: PR → merge → sync (auto o manual) → cluster
-- Drift visible en UI/CLI de Argo
-- Documentar: “prohibido” el `kubectl apply` rutinario salvo emergencias (y luego commit del fix)
+- Argo Application(s) pointing at the manifests repo/path
+- Flow: PR → merge → sync (auto or manual) → cluster
+- Drift visible in Argo UI/CLI
+- Document: routine `kubectl apply` is forbidden except emergencies (then commit the fix)
 
-**Criterio de aceptación GitOps**
+**GitOps acceptance criteria**
 
-- Cambiar réplicas o imagen solo vía Git y ver el cambio reflejado por Argo sin apply manual.
-- Alterar un Deployment a mano y ver OutOfSync (y restore si auto-sync está on).
+- Change replicas or image only via Git and see Argo reflect it without manual apply.
+- Mutate a Deployment by hand and see OutOfSync (and restore if auto-sync is on).
 
 ---
 
-### Fase 4 — Autoscaling por eventos (KEDA)
+### Phase 4 — Event-driven autoscaling (KEDA)
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `pendiente` |
-| **Objetivo** | Escalar workers según profundidad de la cola NATS, no solo CPU |
-| **GitOps** | **Cumple si** los `ScaledObject`/CRDs de KEDA están en Git y Argo los aplica (hereda Fase 3) |
+| **Status** | `pending` |
+| **Goal** | Scale workers from NATS queue depth, not CPU alone |
+| **GitOps** | **Met if** KEDA `ScaledObject`/CRDs live in Git and Argo applies them (inherits Phase 3) |
 
-**Tecnologías**
+**Technologies**
 
-| Tecnología | Rol |
-|------------|-----|
-| KEDA | Autoscaling event-driven |
-| NATS scaler (KEDA) | Escala `analyzer` según backlog JetStream |
-| Argo CD | Sigue siendo el aplicador |
+| Technology | Role |
+|------------|------|
+| KEDA | Event-driven autoscaling |
+| NATS scaler (KEDA) | Scales `analyzer` from JetStream backlog |
+| Argo CD | Remains the applicator |
 
-**Entregables**
+**Deliverables**
 
-- Subir carga → más pods; vaciar cola → scale to zero o mínimo
-- Límites de CPU/memoria coherentes con `Threads=1` por proceso Stockfish
+- Load up → more pods; drain queue → scale to zero or minimum
+- CPU/memory limits consistent with `Threads=1` per Stockfish process
 
 ---
 
-### Fase 5 — Observabilidad
+### Phase 5 — Observability
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `pendiente` |
-| **Objetivo** | Ver latencia de análisis, errores, profundidad de cola e integridad de runs |
-| **GitOps** | **Cumple si** stack de métricas/dashboards está declarado en Git + Argo |
+| **Status** | `pending` |
+| **Goal** | See analysis latency, errors, queue depth, and run integrity |
+| **GitOps** | **Met if** metrics/dashboard stack is declared in Git + Argo |
 
-**Tecnologías (propuesta)**
+**Technologies (proposed)**
 
-| Tecnología | Rol |
-|------------|-----|
-| Prometheus | Métricas |
+| Technology | Role |
+|------------|------|
+| Prometheus | Metrics |
 | Grafana | Dashboards |
-| Logs estructurados (stdout → stack del cluster) | Trazabilidad por `run_id` / `game_id` |
+| Structured logs (stdout → cluster log stack) | Traceability by `run_id` / `game_id` |
 
-**Entregables**
+**Deliverables**
 
-- Dashboard: queue depth, games/sec, failed, `lost`, duración p95 por partida
-- Alertas mínimas: `lost > 0` en run “completo”; cola creciendo sin consumers
+- Dashboard: queue depth, games/sec, failed, `lost`, p95 duration per game
+- Minimal alerts: `lost > 0` on a “complete” run; queue growing with no consumers
 
 ---
 
-### Fase 6 — Chaos engineering
+### Phase 6 — Chaos engineering
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| **Estado** | `pendiente` |
-| **Objetivo** | Probar resiliencia con criterio de éxito verificable |
-| **GitOps** | **Cumple si** experimentos/CRDs viven en Git (o repo de experimentos) y el runtime del cluster sigue bajo Argo |
+| **Status** | `pending` |
+| **Goal** | Prove resilience with a verifiable success criterion |
+| **GitOps** | **Met if** experiment CRDs live in Git (or an experiments repo) and cluster runtime stays under Argo |
 
-**Tecnologías (propuesta)**
+**Technologies (proposed)**
 
-| Tecnología | Rol |
-|------------|-----|
-| Chaos Mesh (u Litmus) | Fallos inyectados (kill pod, network delay, etc.) |
-| NATS redelivery + idempotencia | Recuperación de mensajes |
-| Métrica `lost` | Criterio de éxito/falla del experimento |
+| Technology | Role |
+|------------|------|
+| Chaos Mesh (or Litmus) | Injected faults (kill pod, network delay, etc.) |
+| NATS redelivery + idempotency | Message recovery |
+| `lost` metric | Experiment success/failure criterion |
 
-**Experimentos ejemplo**
+**Example experiments**
 
-1. Matar pods `analyzer` a mitad de run → redelivery → `lost=0`, sin duplicados.
-2. Delay de red hacia Postgres/NATS → timeouts controlados, no corrupción.
-3. Eviction masiva durante scale-up KEDA → integridad del run se mantiene.
+1. Kill `analyzer` pods mid-run → redelivery → `lost=0`, no duplicates.
+2. Network delay to Postgres/NATS → controlled timeouts, no corruption.
+3. Mass eviction during KEDA scale-up → run integrity holds.
 
-**Criterio de éxito del caos:** tras el experimento, el run reporta `lost=0` y no hay filas duplicadas por `game_id`.
+**Chaos success criterion:** after the experiment, the run reports `lost=0` and there are no duplicate rows by `game_id`.
 
 ---
 
-## 4. Mapa fase → tecnologías → GitOps
+## 4. Phase → technologies → GitOps map
 
-| Fase | Tecnologías principales | ¿GitOps cumplido? |
-|------|-------------------------|-------------------|
+| Phase | Main technologies | GitOps met? |
+|-------|-------------------|-------------|
 | 0 Local CLI | Python, Stockfish, SQLite | **No** |
-| 1 Contenedor | Docker, CI, Stockfish en imagen | **No** |
-| 2 K8s + NATS + Postgres | Kubernetes, NATS JetStream, Postgres | **No** (o parcial: manifiestos en Git sin Argo) |
-| 3 Argo CD | Git + Argo CD (+ Kustomize/Helm) | **Sí** (ciclo de vida GitOps activo) |
-| 4 KEDA | KEDA + NATS scaler | **Sí** (si está bajo Argo) |
-| 5 Observabilidad | Prometheus, Grafana | **Sí** (si está bajo Argo) |
-| 6 Chaos | Chaos Mesh + métrica `lost` | **Sí** (plataforma bajo Argo; caos medible) |
+| 1 Container | Docker, CI, Stockfish in image | **No** |
+| 2 K8s + NATS + Postgres | Kubernetes, NATS JetStream, Postgres | **No** (or partial: manifests in Git without Argo) |
+| 3 Argo CD | Git + Argo CD (+ Kustomize/Helm) | **Yes** (GitOps lifecycle active) |
+| 4 KEDA | KEDA + NATS scaler | **Yes** (if under Argo) |
+| 5 Observability | Prometheus, Grafana | **Yes** (if under Argo) |
+| 6 Chaos | Chaos Mesh + `lost` metric | **Yes** (platform under Argo; measurable chaos) |
 
-## 5. Decisiones ya tomadas
+## 5. Decisions already made
 
-| Decisión | Elección |
-|----------|----------|
-| Motor de ajedrez | Stockfish |
-| GitOps tool | Argo CD (no Flux) |
-| Cola (fase cluster) | NATS JetStream |
-| Autoscaling | KEDA (por cola, no solo CPU) |
-| Borrador previo al cluster | CLI Python + SQLite (Fase 0) |
-| Profundidad default del borrador | 10 |
-| Hilos Stockfish | 1 (evitar oversubscribe en contenedores) |
+| Decision | Choice |
+|----------|--------|
+| Chess engine | Stockfish |
+| GitOps tool | Argo CD (not Flux) |
+| Queue (cluster phase) | NATS JetStream |
+| Autoscaling | KEDA (by queue, not CPU alone) |
+| Pre-cluster draft | Python CLI + SQLite (Phase 0) |
+| Default draft depth | 10 |
+| Stockfish threads | 1 (avoid oversubscribe in containers) |
 
-## 6. Fuera de alcance (por ahora)
+## 6. Out of scope (for now)
 
-- Motor distinto de Stockfish
-- UI web rica / producto comercial
-- Multi-cluster / multi-región
-- Entrenamiento de modelos de ML sobre las evals
+- Engine other than Stockfish
+- Rich web UI / commercial product
+- Multi-cluster / multi-region
+- ML training on evals
 
-## 7. Criterios de éxito globales
+## 7. Global success criteria
 
-1. **Producto:** se pueden analizar partidas y consultar blunders por ECO/Elo.
-2. **Integridad:** runs con `lost=0` en operación normal.
-3. **GitOps:** a partir de Fase 3, cambios de despliegue solo vía Git + Argo.
-4. **Caos:** al menos un experimento documentado donde matar workers no produce `lost > 0` ni duplicados.
+1. **Product:** games can be analyzed and blunders queried by ECO/Elo.
+2. **Integrity:** runs with `lost=0` in normal operation.
+3. **GitOps:** from Phase 3 onward, deploy changes only via Git + Argo.
+4. **Chaos:** at least one documented experiment where killing workers does not produce `lost > 0` or duplicates.
 
-## 8. Referencias internas
+## 8. Internal references
 
-- Diseño Fase 0: `docs/superpowers/specs/2026-08-07-local-cli-draft-design.md`
-- Plan Fase 0: `docs/superpowers/plans/2026-08-07-local-cli-draft.md`
-- README operativo local: `README.md`
+- Phase 0 design: `docs/superpowers/specs/2026-08-07-local-cli-draft-design.md`
+- Phase 0 plan: `docs/superpowers/plans/2026-08-07-local-cli-draft.md`
+- Local README: `README.md`

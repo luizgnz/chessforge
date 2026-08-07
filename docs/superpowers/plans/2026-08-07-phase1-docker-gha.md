@@ -28,7 +28,7 @@
 | `.github/workflows/ci.yml` | `test` + `image` jobs |
 | `chessforge/engine.py` | Add Debian Stockfish path to candidates |
 | `README.md` | Document docker build/run + CI/GHCR |
-| `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md` | Mark Fase 1 done when verified |
+| `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md` | Mark Phase 1 done when verified |
 
 ---
 
@@ -223,9 +223,9 @@ docker run --rm chessforge:local
 
 Note: CI pushes `ghcr.io/<owner>/<repo>:latest` on `main`; GitOps still not in use.
 
-- [ ] **Step 2: Parent spec — Fase 1 status**
+- [ ] **Step 2: Parent spec — Phase 1 status**
 
-Set Fase 1 estado to `hecho` after local docker smoke passes; keep GitOps **No**.
+Set Phase 1 status to `done` after local docker smoke passes; keep GitOps **No**.
 
 - [ ] **Step 3: Run unit tests**
 

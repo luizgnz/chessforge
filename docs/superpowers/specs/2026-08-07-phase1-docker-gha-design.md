@@ -1,56 +1,56 @@
-# Chessforge Fase 1 — Docker rápido + GitHub Actions
+# Chessforge Phase 1 — Fast Docker + GitHub Actions
 
-**Fecha:** 2026-08-07  
-**Estado:** implemented (verificado con `docker build` + `docker run` local)  
-**Enfoque:** A — `python:3.12-slim` multi-stage (no distroless)  
-**CI:** build + test + push a GHCR  
+**Date:** 2026-08-07  
+**Status:** implemented (verified with local `docker build` + `docker run`)  
+**Approach:** A — `python:3.12-slim` multi-stage (not distroless)  
+**CI:** build + test + push to GHCR  
 
-Documento padre: `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md` (Fase 1).
+Parent document: `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md` (Phase 1).
 
 ## Goal
 
-Empaquetar el analyzer de la Fase 0 en una imagen Docker que se construya rápido y sea reproducible, y automatizar en GitHub Actions: tests, build y publicación en GHCR.
+Package the Phase 0 analyzer in a Docker image that builds quickly and reproducibly, and automate in GitHub Actions: tests, build, and publish to GHCR.
 
 ## Scope
 
 **In**
 
-- `Dockerfile` multi-stage sobre `python:3.12-slim-bookworm`
-- Stockfish instalado por `apt` (binario del distro; no compilar desde source)
-- `.dockerignore` para no invalidar cache con ruido local
-- Workflow GitHub Actions:
-  - `pytest` en job Python
-  - `docker build` (Buildx + cache GHA)
-  - push a GHCR en `main` (`:sha` y `:latest`)
-  - smoke: `docker run` con sample PGN y `--max-games 1`
-- `STOCKFISH_PATH` fijado en la imagen al path Debian habitual
-- Actualizar README con build/run local y notas de CI
-- Actualizar el spec padre: Fase 1 → en progreso / hecho cuando se implemente
+- Multi-stage `Dockerfile` on `python:3.12-slim-bookworm`
+- Stockfish installed via `apt` (distro binary; do not compile from source)
+- `.dockerignore` so local noise does not bust cache
+- GitHub Actions workflow:
+  - `pytest` in a Python job
+  - `docker build` (Buildx + GHA cache)
+  - push to GHCR on `main` (`:sha` and `:latest`)
+  - smoke: `docker run` with sample PGN and `--max-games 1`
+- `STOCKFISH_PATH` set in the image to the usual Debian path
+- Update README with local build/run and CI notes
+- Update parent spec: Phase 1 → in progress / done when implemented
 
 **Out**
 
 - Distroless
 - Kubernetes, NATS, KEDA, Argo CD, Chaos Mesh
-- Compilar Stockfish desde source
-- Registry distinto de GHCR
+- Compiling Stockfish from source
+- Registry other than GHCR
 - HTTP API
 
-## Por qué no distroless (ahora)
+## Why not distroless (now)
 
-Distroless reduce tamaño/superficie de ataque en runtime; **no** acelera el build. Para Fase 1 priorizamos:
+Distroless shrinks runtime attack surface; it does **not** speed up the build. For Phase 1 we prioritize:
 
-1. Cache de capas + pip (BuildKit)
-2. Stockfish vía `apt` (segundos, no minutos)
-3. Debug fácil (`bash` en slim si hace falta)
+1. Layer + pip cache (BuildKit)
+2. Stockfish via `apt` (seconds, not minutes)
+3. Easy debug (`bash` in slim if needed)
 
-Distroless queda como opción posterior cuando el worker esté estable.
+Distroless remains a later option once the worker is stable.
 
 ## Architecture
 
 ```text
 ┌──────────────────────────── CI (GitHub Actions) ─────────────────────────────┐
-│  job: test          pytest (Python 3.12 + Stockfish en runner o skip engine) │
-│  job: image         docker buildx + cache GHA                                │
+│  job: test          pytest (Python 3.12; Stockfish optional / skip engine)   │
+│  job: image         docker buildx + GHA cache                                │
 │                     └─ PR: build (+ smoke run, no push)                      │
 │                     └─ main: build + push ghcr.io/<owner>/<repo>             │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -69,28 +69,28 @@ Dockerfile (multi-stage):
 
 ## Components
 
-| Artefacto | Responsabilidad |
-|-----------|-----------------|
-| `Dockerfile` | Imagen del worker/analyzer |
-| `.dockerignore` | Excluir `.venv`, `.git`, DBs, caches |
+| Artifact | Responsibility |
+|----------|----------------|
+| `Dockerfile` | Worker/analyzer image |
+| `.dockerignore` | Exclude `.venv`, `.git`, DBs, caches |
 | `.github/workflows/ci.yml` | test + build + push GHCR |
-| `README.md` | `docker build` / `docker run` documentados |
+| `README.md` | Documented `docker build` / `docker run` |
 
-Sin cambios de lógica de análisis salvo ajustes menores de path/env si el smoke lo exige (p. ej. documentar `/usr/games/stockfish` en `engine.py` candidates — opcional; `STOCKFISH_PATH` basta).
+No analysis-logic changes unless smoke requires minor path/env tweaks (e.g. documenting `/usr/games/stockfish` in `engine.py` candidates — optional; `STOCKFISH_PATH` is enough).
 
-## Dockerfile (contrato)
+## Dockerfile (contract)
 
 ### Stages
 
-1. **deps** — instalar dependencias Python en un venv o `/install` prefix.
-2. **runtime** — slim + `stockfish` del apt + código de app.
+1. **deps** — install Python dependencies into a venv or `/install` prefix.
+2. **runtime** — slim + apt `stockfish` + app code.
 
-### Build rápido (requisitos)
+### Fast build (requirements)
 
-- Orden: copiar `requirements.txt` → `pip install` → copiar `chessforge/` y `data/sample.pgn`.
-- BuildKit cache mount para pip: `--mount=type=cache,target=/root/.cache/pip`.
-- No `apt-get` innecesario en el stage de deps; en runtime: `apt-get update && apt-get install -y --no-install-recommends stockfish && rm -rf /var/lib/apt/lists/*`.
-- Una sola arquitectura objetivo en CI por defecto: `linux/amd64` (evitar qemu multi-arch en esta fase; se puede ampliar después).
+- Order: copy `requirements.txt` → `pip install` → copy `chessforge/` and `data/sample.pgn`.
+- BuildKit cache mount for pip: `--mount=type=cache,target=/root/.cache/pip`.
+- No unnecessary `apt-get` in the deps stage; in runtime: `apt-get update && apt-get install -y --no-install-recommends stockfish && rm -rf /var/lib/apt/lists/*`.
+- Single target architecture in CI by default: `linux/amd64` (avoid qemu multi-arch in this phase; can expand later).
 
 ### Runtime env / CMD
 
@@ -104,9 +104,9 @@ CMD ["python", "-m", "chessforge.analyze", \
      "--db", "/tmp/chessforge.db"]
 ```
 
-DB por defecto en `/tmp` para que el contenedor no necesite volumen en el smoke.
+Default DB under `/tmp` so the container needs no volume for smoke.
 
-### `.dockerignore` (mínimo)
+### `.dockerignore` (minimum)
 
 ```text
 .venv/
@@ -120,35 +120,35 @@ docs/
 .DS_Store
 ```
 
-(README puede quedar fuera de la imagen; la doc vive en el repo.)
+(README may stay out of the image; docs live in the repo.)
 
 ## GitHub Actions
 
 ### Triggers
 
-- `pull_request` → test + build (+ smoke), **sin push**
-- `push` a `main` → test + build + smoke + **push** GHCR
+- `pull_request` → test + build (+ smoke), **no push**
+- `push` to `main` → test + build + smoke + **push** GHCR
 
 ### Jobs
 
-| Job | Pasos clave |
-|-----|-------------|
+| Job | Key steps |
+|-----|-----------|
 | `test` | checkout, setup-python 3.12, pip cache, `pip install -r requirements.txt pytest`, `pytest` |
-| `image` | checkout, setup-buildx, login GHCR (solo main), build-push-action, smoke `docker run` |
+| `image` | checkout, setup-buildx, login GHCR (main only), build-push-action, smoke `docker run` |
 
-### Imagen en GHCR
+### Image on GHCR
 
-- Nombre: `ghcr.io/<github.repository>` (minúsculas; normalizar si hace falta)
-- Tags en `main`: `<git sha>` y `latest`
-- Permisos del workflow: `contents: read`, `packages: write`
+- Name: `ghcr.io/<github.repository>` (lowercase; normalize if needed)
+- Tags on `main`: `<git sha>` and `latest`
+- Workflow permissions: `contents: read`, `packages: write`
 
 ### Cache
 
-- `cache-from` / `cache-to`: `type=gha,mode=max` en build-push-action
+- `cache-from` / `cache-to`: `type=gha,mode=max` on build-push-action
 
 ### Smoke
 
-Tras build (y load local en el runner, o pull de la imagen recién pusheada en main):
+After build (load locally on the runner, or pull the just-pushed image on main):
 
 ```bash
 docker run --rm "$IMAGE" \
@@ -159,38 +159,38 @@ docker run --rm "$IMAGE" \
     --db /tmp/chessforge.db
 ```
 
-Éxito = exit 0 y salida con `lost=0` (o al menos proceso OK). En runners sin Stockfish en el job `test`, el smoke del contenedor es la verificación real del motor.
+Success = exit 0 and output with `lost=0` (or at least process OK). On runners without Stockfish in the `test` job, container smoke is the real engine check.
 
-**Nota sobre `test`:** los tests unitarios actuales (`classify`, `db`) no requieren Stockfish. No bloquear el job `test` instalando Stockfish en el runner salvo que se añadan tests de integración fuera de Docker.
+**Note on `test`:** current unit tests (`classify`, `db`) do not need Stockfish. Do not block the `test` job on installing Stockfish on the runner unless integration tests outside Docker are added.
 
 ## Success criteria
 
-1. `docker build -t chessforge:local .` completa en máquina de desarrollo sin compilar Stockfish.
-2. `docker run --rm chessforge:local` analiza ≥1 partida del sample sin error.
-3. En PR, CI corre `pytest` + build (sin publicar).
-4. En push a `main`, la imagen queda en GHCR con tags `sha` y `latest`.
-5. Rebuilds sucesivos aprovechan cache (deps no se reinstalan si `requirements.txt` no cambia).
+1. `docker build -t chessforge:local .` finishes on a developer machine without compiling Stockfish.
+2. `docker run --rm chessforge:local` analyzes ≥1 sample game with no error.
+3. On PR, CI runs `pytest` + build (no publish).
+4. On push to `main`, the image lands on GHCR with `sha` and `latest` tags.
+5. Successive rebuilds hit cache (deps are not reinstalled if `requirements.txt` is unchanged).
 
 ## Error handling
 
-- Si `apt` no encuentra `stockfish` en la suite elegida: fijar imagen base bookworm y paquete `stockfish` documentado; fallar el build (no silenciar).
-- Si GHCR login falla: solo afecta push en `main`; build/test deben seguir siendo visibles como jobs separados cuando sea práctico.
-- Smoke failure falla el workflow (no publicar `:latest` engañoso: preferir push solo tras smoke, o push por digest y tag `latest` después del smoke).
+- If `apt` cannot find `stockfish` on the chosen suite: pin bookworm base and document the `stockfish` package; fail the build (do not silence).
+- If GHCR login fails: only affects push on `main`; keep build/test visible as separate jobs when practical.
+- Smoke failure fails the workflow (do not publish a misleading `:latest`: prefer push only after smoke, or push by digest and tag `latest` after smoke).
 
-**Orden preferido en `main`:** build (load o push a tag `sha`) → smoke → tag/push `latest` (o un solo push tras smoke con build local load). Implementación concreta en el plan: smoke antes de retaguear `latest` si el action lo permite con dos pasos.
+**Preferred order on `main`:** build (load or push `sha` tag) → smoke → tag/push `latest` (or a single push after smoke with local load). Concrete plan: smoke before retagging `latest` if the action allows two steps.
 
 ## Dependencies
 
 - Docker Buildx / BuildKit
 - GitHub Actions (`actions/checkout`, `actions/setup-python`, `docker/setup-buildx-action`, `docker/login-action`, `docker/build-push-action`)
-- GHCR habilitado para el repo (permisos de packages del `GITHUB_TOKEN`)
-- Hereda Fase 0: Python 3.12, `chess`, `zstandard`, Stockfish
+- GHCR enabled for the repo (`GITHUB_TOKEN` packages permissions)
+- Inherits Phase 0: Python 3.12, `chess`, `zstandard`, Stockfish
 
 ## GitOps
 
-**No cumple** el ciclo GitOps. Esta fase publica una imagen; no hay Argo ni reconciliación de cluster. (GitOps = Fase 3 del spec padre.)
+**Does not meet** the GitOps lifecycle. This phase publishes an image; there is no Argo or cluster reconciliation. (GitOps = Phase 3 in the parent spec.)
 
-## Referencias
+## References
 
-- Spec proyecto: `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md`
-- Diseño local: `docs/superpowers/specs/2026-08-07-local-cli-draft-design.md`
+- Project spec: `docs/superpowers/specs/2026-08-07-chessforge-project-spec.md`
+- Local design: `docs/superpowers/specs/2026-08-07-local-cli-draft-design.md`

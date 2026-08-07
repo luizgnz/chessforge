@@ -1,12 +1,12 @@
 # chessforge (local draft)
 
-Borrador sin Kubernetes: analiza partidas PGN con Stockfish, guarda resultados en SQLite y consulta blunders por apertura.
+Local draft without Kubernetes: analyze PGN games with Stockfish, store results in SQLite, and query blunders by opening.
 
-## Requisitos
+## Requirements
 
 - Python 3.12+
-- Stockfish (`brew install stockfish`) — solo para ejecución local sin Docker
-- Docker (opcional) — imagen con Stockfish incluido
+- Stockfish (`brew install stockfish`) — only for local runs without Docker
+- Docker (optional) — image includes Stockfish
 
 ## Setup
 
@@ -16,48 +16,48 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Uso local
+## Local usage
 
 ```bash
-# Analiza el sample (depth 10, 1 hilo de Stockfish)
+# Analyze the sample (depth 10, 1 Stockfish thread)
 python -m chessforge.analyze --source data/sample.pgn --depth 10 --max-games 5
 
-# Reporte por apertura (ECO)
+# Report by opening (ECO)
 python -m chessforge.report --eco C50
 ```
 
-Al terminar, `analyze` imprime un resumen de integridad:
+When finished, `analyze` prints an integrity summary:
 
 ```text
 DONE  RUN …  enqueued=5  analyzed=5  failed=0  lost=0  …
 ```
 
-## Docker (Fase 1)
+## Docker (Phase 1)
 
-Imagen multi-stage `python:3.12-slim-bookworm` + Stockfish vía `apt` (sin compilar).
+Multi-stage `python:3.12-slim-bookworm` image + Stockfish via `apt` (no compile from source).
 
 ```bash
 docker build -t chessforge:local .
 docker run --rm chessforge:local
 ```
 
-Por defecto analiza 1 partida del sample y escribe la DB en `/tmp/chessforge.db`.
+By default it analyzes 1 sample game and writes the DB to `/tmp/chessforge.db`.
 
 ## CI / GHCR
 
 GitHub Actions (`.github/workflows/ci.yml`):
 
-- En PR y `main`: `pytest` + `docker build` + smoke (`docker run`, 1 partida).
-- Solo en push a `main`: publica `ghcr.io/<owner>/<repo>:<sha>` y `:latest` **después** del smoke.
+- On PR and `main`: `pytest` + `docker build` + smoke (`docker run`, 1 game).
+- On push to `main` only: publish `ghcr.io/<owner>/<repo>:<sha>` and `:latest` **after** smoke.
 
-Esto **no** es GitOps (falta Argo CD / reconciliación de cluster).
+This is **not** GitOps yet (no Argo CD / cluster reconciliation).
 
-## Qué demuestra
+## What this demonstrates
 
-1. Análisis CPU-bound real con profundidad fija (reproducible).
-2. Persistencia idempotente (`ON CONFLICT DO NOTHING`).
-3. Conteo verificable (`enqueued` vs analizadas).
-4. Consulta del tipo “blunders por apertura / Elo”.
-5. Imagen reproducible + CI que publica a GHCR.
+1. Real CPU-bound analysis at a fixed depth (reproducible).
+2. Idempotent persistence (`ON CONFLICT DO NOTHING`).
+3. Verifiable counts (`enqueued` vs analyzed).
+4. Queries like “blunders by opening / Elo”.
+5. Reproducible image + CI that publishes to GHCR.
 
-Lo que viene después: NATS, K8s, KEDA, observabilidad, Chaos Mesh, GitOps con **Argo CD**.
+Next: NATS, Kubernetes, KEDA, observability, Chaos Mesh, GitOps with **Argo CD**.
