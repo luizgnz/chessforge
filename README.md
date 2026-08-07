@@ -46,6 +46,8 @@ Design record: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013**.
 
 Demo Vault unseal material is written to `.vault-init.json` (gitignored) and Secret `vault-init` in the `vault` namespace — kind learning only.
 
+On Apple Silicon, `kind-up` builds and `kind load`s a native image (CI GHCR multi-arch may lag). If Postgres auth fails after changing the Vault password, delete the Postgres PVC and re-sync (`kubectl -n chessforge delete pvc data-chessforge-postgresql-0`).
+
 ## What this demonstrates
 
 1. CPU-bound Stockfish analysis at fixed depth (`Threads=1`).

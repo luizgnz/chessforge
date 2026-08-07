@@ -487,3 +487,4 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | 2026-08-07 | ADR-012: Vault + ESO accepted; implement with Argo in Phase 3 (not Phase 2.5). |
 | 2026-08-07 | ADR-013: Phase 3 design accepted (App of Apps, Vault Raft, ESO, GHCR, Argo-owned platform). |
 | 2026-08-07 | Phase 3 implementation: `deploy/gitops` app-of-apps, Vault/ESO/NATS/Postgres via Argo, vault-bootstrap, plaintext `secret.yaml` removed. |
+| 2026-08-07 | Phase 3 smoke verified on kind: Vault→ESO→Secret, ingest enqueued 5, Postgres games=5; Postgres chart 18.8.6; native kind image load. |
