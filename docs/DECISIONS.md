@@ -318,7 +318,7 @@ GitOps is **met** only from Phase 3 (Argo CD reconciliation). Earlier phases may
 |--|--|
 | **Date** | 2026-08-07 |
 | **Phase** | 4 (chosen early) |
-| **Status** | Accepted (not implemented yet) |
+| **Status** | Accepted — design detailed in ADR-014 (not implemented yet) |
 
 **Context:** CPU autoscaling is a poor signal for queue depth with single-threaded Stockfish workers.
 
@@ -465,6 +465,109 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 
 ---
 
+## ADR-014 — Phase 4 design: KEDA on NATS JetStream backlog
+
+| | |
+|--|--|
+| **Date** | 2026-08-07 |
+| **Phase** | 4 |
+| **Status** | Proposed — awaiting review before implementation |
+| **Supersedes / details** | ADR-011 (direction); this ADR is the Phase 4 design record |
+
+**Context:** Phase 3 GitOps is live (Argo app-of-apps, Vault+ESO, NATS JetStream, Postgres, analyzer Deployment at fixed `replicas: 2`). CPU HPA is a weak signal for queue work with Stockfish `Threads=1`. ADR-011 already chose KEDA on JetStream backlog; Phase 4 needs a concrete GitOps layout and scaler settings for kind learning.
+
+### Approaches considered
+
+| Approach | Summary | Trade-offs |
+|----------|---------|------------|
+| **A — KEDA Helm child Application + ScaledObject in app YAML (recommended)** | New Argo Application `keda` installs the official KEDA Helm chart; `ScaledObject` lives under `deploy/k8s/app/` (chessforge Application) targeting Deployment `analyzer` with trigger `nats-jetstream`. | Matches Phase 3 pattern (ESO/Vault as Helm apps; workload YAML plain). Sync-wave orders CRDs before ScaledObject. Minimal new structure. |
+| **B — KEDA Helm child + separate autoscaling Application** | Same operator install; ScaledObject in e.g. `deploy/k8s/autoscaling/` owned by a dedicated Argo Application. | Cleaner separation of scaling CRDs vs Deployment; extra Application and path for one object — YAGNI on kind. |
+| **C — Imperative KEDA install; only ScaledObject in Git** | `kubectl`/Helm install KEDA outside Argo; Git holds ScaledObject only. | Breaks the ADR-013 bootstrap boundary (“Argo owns the rest”); weaker GitOps demo. |
+
+**Decision:** **Approach A.**
+
+### Locked choices
+
+| Topic | Choice |
+|-------|--------|
+| Operator install | Official **KEDA Helm** chart via new Argo child Application `keda` (same multi-source / chart pattern as `eso`) |
+| Namespace | `keda` (operator); ScaledObject in `chessforge` |
+| Sync wave | `keda` before `chessforge` (e.g. wave `1` or `2`; NATS stays wave `3`, app wave `4`) so CRDs exist before ScaledObject sync |
+| Scale target | Deployment `analyzer` in namespace `chessforge` |
+| Trigger | KEDA `nats-jetstream` |
+| Stream / consumer | `CHESSFORGE` / `analyzers` (from `chessforge/messaging.py`) |
+| Monitoring endpoint | NATS HTTP monitor (chart default `config.monitor.enabled: true`, port **8222**), e.g. `chessforge-nats.chessforge.svc.cluster.local:8222` — confirm Service name at implement time |
+| Account | `$G` (default; no NATS accounts configured) |
+| Replica bounds | **`minReplicaCount: 0`**, **`maxReplicaCount: 4`** (kind-friendly; demonstrates scale-to-zero) |
+| Lag | `lagThreshold: "1"` (≈ one pending/unacked message per replica target); `activationLagThreshold: "0"` (wake from zero when any lag) |
+| Polling / cooldown | Prefer snappy learning defaults (e.g. `pollingInterval: 5`, `cooldownPeriod: 60`); exact numbers tunable at implement time |
+| Worker CPU | Keep Stockfish **`Threads=1`** and existing analyzer **CPU requests/limits** (`500m` / `1`) — do not raise threads to “help” HPA |
+| Deployment replicas | Once ScaledObject is live, **KEDA owns replica count**; drop or stop relying on static `replicas: 2` in the Deployment |
+| Auth | No NATS monitor auth today → no `TriggerAuthentication` required |
+| Docs | Design lives only in this file (`docs/DECISIONS.md`); no `docs/superpowers/specs/` |
+
+### Goal
+
+1. Analyzer replica count follows JetStream consumer lag, not CPU alone.
+2. Idle queue → scale toward **zero**; backlog after ingest → scale up within `maxReplicaCount`.
+3. KEDA operator and ScaledObject are desired state under Argo (GitOps preserved).
+4. Sample pipeline integrity unchanged: ingest → NATS → analyzers → Postgres, `lost=0` / games persisted.
+
+### GitOps layout (intended)
+
+| Child Application | Delivers |
+|-------------------|----------|
+| `keda` (**new**) | KEDA Helm chart (`kedacore/keda`), CRDs + operator in `keda` |
+| `chessforge` (existing) | App YAML **plus** `ScaledObject` (e.g. `deploy/k8s/app/analyzer-scaledobject.yaml`) |
+
+Root Application already globs `deploy/gitops/applications/` — adding `keda.yaml` is enough for discovery.
+
+### Scaling flow
+
+```text
+ingest Job ──publish──► JetStream CHESSFORGE / durable analyzers
+                              │
+                              │ lag (pending + ack-pending)
+                              ▼
+                     KEDA nats-jetstream scaler
+                              │
+                              ▼
+                     ScaledObject → Deployment/analyzer replicas
+                              │
+                              ▼
+                     workers (Threads=1) ──persist──► Postgres
+```
+
+**Cold start:** Stream/consumer are created by ingest/worker `ensure_stream_and_consumer`. Before the first ingest, monitoring may report stream-not-found and the scaler stays inactive — acceptable for learning. After ingest creates the stream and publishes, lag activates scale-from-zero. If that proves flaky on kind, fall back to `minReplicaCount: 1` without changing the rest of the design.
+
+### Success criteria
+
+1. With an empty (or drained) queue, analyzer replicas reach **0** (or stay at min) without manual `kubectl scale`.
+2. Running the sample ingest Job produces backlog → KEDA scales analyzer replicas **up** (observed via `kubectl get deploy,scaledobject -n chessforge`).
+3. After the queue drains and cooldown elapses, replicas scale **down** again.
+4. Changing ScaledObject/`keda` Application manifests in Git → Argo syncs (no routine imperative Helm for KEDA).
+5. Sample still yields ≥5 games in Postgres; Stockfish remains `Threads=1` with existing CPU limits.
+
+### Out of scope (Phase 4)
+
+- Observability stack (Phase 5), Chaos Mesh (Phase 6)
+- Query HTTP API / report Job
+- HPA-on-CPU as primary scaler; Prometheus adapter custom metrics
+- NATS auth / TLS for the monitoring endpoint
+- Multi-cluster KEDA; production capacity planning
+
+### Rejected alternatives (this design pass)
+
+- **Approach B** — separate autoscaling Application for one ScaledObject (extra indirection now).
+- **Approach C** — imperative KEDA install (weakens GitOps vs ADR-013).
+- **HPA on CPU** — already rejected in ADR-011; still wrong for `Threads=1` queue workers.
+- **Raising Stockfish Threads or removing CPU limits** to make CPU HPA “work” — fights the learning goal.
+- **`minReplicaCount: 1` as the default** — valid fallback if scale-to-zero is flaky; not the first choice for a Phase 4 learning demo.
+
+**GitOps impact:** Remains **met** if KEDA + ScaledObject are reconciled by Argo as above.
+
+---
+
 ## Decision index by phase
 
 | Phase | ADRs | GitOps met? |
@@ -473,7 +576,7 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | 1 Docker + GHA + GHCR | 004 | No |
 | 2 kind + NATS + Postgres + app YAML | 005–009 | No / partial (Git + kubectl/helm) |
 | 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (when kind-up Phase 3 smoke passes) |
-| 4 KEDA | 011 | Yes if under Argo |
+| 4 KEDA | 011, **014** | Yes if under Argo (design in 014) |
 | 5 Observability | (pending ADR) | Yes if under Argo |
 | 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
 
@@ -490,3 +593,4 @@ Vault KV  ──(ESO)──►  Secret/chessforge-db  ──►  ingest / analyz
 | 2026-08-07 | Phase 3 implementation: `deploy/gitops` app-of-apps, Vault/ESO/NATS/Postgres via Argo, vault-bootstrap, plaintext `secret.yaml` removed. |
 | 2026-08-07 | Phase 3 smoke verified on kind: Vault→ESO→Secret, ingest enqueued 5, Postgres games=5; Postgres chart 18.8.6; native kind image load. |
 | 2026-08-07 | GHCR package treated as **public** while the repo is public; kind pulls without imagePullSecret. Private package + ESO dockerconfig pull secret deferred. |
+| 2026-08-07 | ADR-014: Phase 4 design proposed (KEDA Helm via Argo, ScaledObject on analyzer, nats-jetstream lag, min 0 / max 4). |
