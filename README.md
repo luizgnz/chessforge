@@ -1,6 +1,6 @@
 # chessforge
 
-Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets, KEDA scale-to-zero on JetStream lag, Prometheus/Grafana observability, and Chaos Mesh pod-kill experiments.
+Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets, KEDA scale-to-zero on JetStream lag, Prometheus/Grafana observability, Chaos Mesh pod-kill experiments, and an optional in-cluster ECO report Job.
 
 ## Requirements
 
@@ -54,7 +54,7 @@ Chaos Mesh is installed under Argo; pod-kill experiments are applied by the chao
 ```
 
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
-Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA), **ADR-015** (observability), **ADR-016** (chaos).
+Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA), **ADR-015** (observability), **ADR-016** (chaos), **ADR-017** (optional report Job).
 
 ### Grafana (port-forward)
 
@@ -84,6 +84,7 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 | 4 KEDA | `./deploy/scripts/smoke-keda.sh` | idle `0→N` after ingest; `games>=5` |
 | 5 Observability | `./deploy/scripts/smoke-observability.sh` | monitoring Healthy; Prometheus+Grafana Running |
 | 6 Chaos | `./deploy/scripts/smoke-chaos.sh` | PodChaos mid-run; `games>=5`; `lost=0`; no duplicate `game_id`s |
+| 7 Report (optional) | `./deploy/scripts/smoke-report.sh` | Job logs: `games_analyzed` / blunder rates for ECO (default `C50`) |
 
 ```bash
 ./deploy/scripts/smoke-local.sh
@@ -93,6 +94,7 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 ./deploy/scripts/smoke-keda.sh       # scale-to-zero then scale-up
 ./deploy/scripts/smoke-observability.sh
 ./deploy/scripts/smoke-chaos.sh      # kill analyzers mid-run; integrity
+./deploy/scripts/smoke-report.sh     # ECO report from cluster Postgres
 ```
 
 ## What this demonstrates
@@ -105,6 +107,7 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 6. KEDA autoscaling on NATS JetStream lag (scale-to-zero).
 7. Prometheus + Grafana pipeline dashboard and `lost > 0` alert (port-forward).
 8. Chaos Mesh `PodChaos` on analyzers with NATS redelivery and `lost=0` integrity.
+9. Optional product UX: smoke-applied report Job reading Postgres (`DATABASE_URL`).
 
 ## Docs
 

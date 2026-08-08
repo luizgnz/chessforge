@@ -159,3 +159,12 @@ def count_games(conn: psycopg.Connection) -> int:
         cur.execute("SELECT COUNT(*) AS n FROM games")
         row = cur.fetchone()
     return int(row["n"])
+
+
+def games_for_eco(conn: psycopg.Connection, eco: str) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM games WHERE eco = %s ORDER BY game_id",
+            (eco,),
+        )
+        return list(cur.fetchall())

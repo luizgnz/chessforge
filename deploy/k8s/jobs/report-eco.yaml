@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: report-eco
+  namespace: chessforge
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: report
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: report
+          image: ghcr.io/luizgnz/chessforge:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - exec python -m chessforge.report --eco "${ECO}"
+          env:
+            - name: ECO
+              value: "C50"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chessforge-db
+                  key: DATABASE_URL

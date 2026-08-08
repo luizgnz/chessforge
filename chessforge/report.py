@@ -1,28 +1,53 @@
 from __future__ import annotations
 
 import argparse
+import os
 import statistics
 import sys
 from collections import defaultdict
+from typing import Any, Mapping, Sequence
 
-from chessforge.db import connect, elo_band, games_for_eco
+from chessforge.db import connect as sqlite_connect
+from chessforge.db import elo_band
+from chessforge.db import games_for_eco as sqlite_games_for_eco
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Report blunder stats by opening")
     p.add_argument("--eco", required=True, help="ECO code, e.g. C50")
-    p.add_argument("--db", default="data/chessforge.db")
+    p.add_argument(
+        "--db",
+        default="data/chessforge.db",
+        help="SQLite path (ignored when DATABASE_URL is set)",
+    )
     return p.parse_args(argv)
+
+
+def _load_rows(eco: str, db_path: str) -> tuple[Sequence[Mapping[str, Any]], str]:
+    """Return (rows, source_label). Prefers Postgres when DATABASE_URL is set."""
+    if os.environ.get("DATABASE_URL"):
+        from chessforge import pg
+
+        conn = pg.connect()
+        try:
+            return pg.games_for_eco(conn, eco), "postgres"
+        finally:
+            conn.close()
+
+    conn = sqlite_connect(db_path)
+    try:
+        return sqlite_games_for_eco(conn, eco), db_path
+    finally:
+        conn.close()
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    conn = connect(args.db)
-    rows = games_for_eco(conn, args.eco.upper())
-    conn.close()
+    eco = args.eco.upper()
+    rows, source = _load_rows(eco, args.db)
 
     if not rows:
-        print(f"No games for ECO {args.eco.upper()} in {args.db}")
+        print(f"No games for ECO {eco} in {source}", file=sys.stderr)
         return 1
 
     opening = rows[0]["opening"] or "(unknown)"
@@ -42,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         had_blunder = (r["blunders_white"] or 0) + (r["blunders_black"] or 0) > 0
         by_band[band].append(1.0 if had_blunder else 0.0)
 
-    print(f"ECO {args.eco.upper()} — {opening}")
+    print(f"ECO {eco} — {opening}")
     print(f"games_analyzed: {len(rows)}")
     print(f"median_first_blunder_ply: {median_fb}")
     print("blunder_rate_by_elo:")

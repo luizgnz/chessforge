@@ -13,6 +13,7 @@ Reproducible verification paths used across phases. Scripts live next to this fi
 | Phase 4 — KEDA scale | `./deploy/scripts/smoke-keda.sh` | idle `0` (or warn); after ingest replicas `>0`; `games>=5` |
 | Phase 5 — Observability | `./deploy/scripts/smoke-observability.sh` | monitoring Synced/Healthy; Prometheus+Grafana Running |
 | Phase 6 — Chaos | `./deploy/scripts/smoke-chaos.sh` | PodChaos on analyzers; `games>=5`; `lost=0`; no duplicate `game_id`s |
+| Phase 7 — Report (optional) | `./deploy/scripts/smoke-report.sh` | Job complete; logs include ECO blunder stats (`C50` default) |
 | Teardown | `./deploy/kind-down.sh` | kind cluster deleted |
 
 All script text is English-only. Prefer these focused smokes after `kind-up` rather than inventing longer e2e suites.
@@ -194,6 +195,33 @@ Notes:
 
 ---
 
+## Phase 7 — ECO report Job (optional)
+
+Read-only report against cluster Postgres (same CLI as local Phase 0). Needs games already analyzed (`kind-up` or `smoke-pipeline`). Image must include the Postgres-aware `report` path (rebuild / `FORCE_KIND_LOAD=1` if the node still has an older tag).
+
+```bash
+./deploy/scripts/smoke-report.sh
+# ECO=C50 ./deploy/scripts/smoke-report.sh
+```
+
+Manual:
+
+```bash
+kubectl -n chessforge delete job report-eco --ignore-not-found
+kubectl apply -f deploy/k8s/jobs/report-eco.yaml
+kubectl -n chessforge wait --for=condition=complete job/report-eco --timeout=120s
+kubectl -n chessforge logs job/report-eco
+# expect: ECO C50 — ... / games_analyzed / median_first_blunder_ply / blunder_rate_by_elo
+```
+
+Notes:
+
+- `DATABASE_URL` from Secret `chessforge-db` (Vault/ESO).
+- Job is smoke-applied (not always-reconciled by Argo), same pattern as ingest/chaos.
+- Local SQLite path unchanged: `python -m chessforge.report --eco C50 --db data/chessforge.db`.
+
+---
+
 ## Suggested order after a fresh clone
 
 ```bash
@@ -204,5 +232,6 @@ Notes:
 ./deploy/scripts/smoke-keda.sh           # idle → scale-up after ingest
 ./deploy/scripts/smoke-observability.sh  # Prometheus/Grafana + scrapes
 ./deploy/scripts/smoke-chaos.sh          # PodChaos mid-run → lost=0
+./deploy/scripts/smoke-report.sh         # ECO report from Postgres
 ./deploy/kind-down.sh
 ```

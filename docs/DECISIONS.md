@@ -775,7 +775,7 @@ ingest Job ──publish──► JetStream CHESSFORGE / analyzers
 |--|--|
 | **Date** | 2026-08-08 |
 | **Phase** | 7 (optional product UX) |
-| **Status** | Accepted (design; not implemented yet) |
+| **Status** | Implemented |
 | **Depends on** | Phase 0 `report` CLI, Phase 3 Postgres + `chessforge-db` Secret |
 
 **Context:** Phases 0–6 prove analysis, GitOps, scaling, observability, and chaos. Querying blunders by ECO still requires the local SQLite CLI or ad-hoc `psql`. An optional thin slice closes the **product** loop against cluster Postgres without adding infrastructure learning goals.
@@ -857,3 +857,4 @@ ingest Job ──publish──► JetStream CHESSFORGE / analyzers
 | 2026-08-07 | Added [`docs/LESSONS.md`](LESSONS.md): implementation incidents (symptom → diagnosis → fix → lesson), cross-cutting themes, links to smoke regression scripts; README Docs section links it. |
 | 2026-08-07 | ADR-016: Phase 6 design + implementation — Chaos Mesh Helm via Argo (`2.8.3`, containerd on kind), smoke-applied `PodChaos` on analyzer, `smoke-chaos.sh` integrity (lost=0, no duplicate game_ids). |
 | 2026-08-08 | ADR-017: optional Phase 7 design — cluster **report Job** (reuse CLI + Postgres via `DATABASE_URL`); HTTP API deferred. |
+| 2026-08-08 | ADR-017 implemented: `report` prefers `DATABASE_URL` → Postgres (`pg.games_for_eco`); Job `deploy/k8s/jobs/report-eco.yaml`; `smoke-report.sh`. |
