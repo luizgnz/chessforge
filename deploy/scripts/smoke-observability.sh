@@ -59,12 +59,12 @@ echo "==> scrape endpoints (best-effort)"
 # postgres-exporter lost metric
 if kubectl -n "$NS_APP" get deploy postgres-exporter >/dev/null 2>&1; then
   kubectl -n "$NS_APP" rollout status deploy/postgres-exporter --timeout=120s
-  lost="$(kubectl -n "$NS_APP" run pgexp-probe --rm -i --restart=Never --image=curlimages/curl:8.5.0 -- \
+  lost="$(kubectl -n "$NS_APP" run "pgexp-probe-${RANDOM}" --rm -i --restart=Never --image=curlimages/curl:8.5.0 -- \
     curl -sS "http://postgres-exporter.${NS_APP}.svc:9187/metrics" 2>/dev/null \
-    | grep -E '^chessforge_lost_games ' || true)"
+    | grep -E '^chessforge_lost_games(\{| )' || true)"
   echo "postgres-exporter: ${lost:-'(metric not yet visible)'}"
   if [[ -z "${lost}" ]]; then
-    echo "WARN: chessforge_lost_games not found yet (tables may be empty until first ingest)" >&2
+    echo "WARN: chessforge_lost_games not found yet (check DATA_SOURCE_NAME / sslmode)" >&2
   fi
 fi
 
