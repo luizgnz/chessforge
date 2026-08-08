@@ -12,12 +12,23 @@ WAIT_SECS="${WAIT_SECS:-180}"
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need kubectl
 
-echo "==> Argo Application monitoring"
-kubectl -n argocd get application monitoring
-sync="$(kubectl -n argocd get application monitoring -o jsonpath='{.status.sync.status}' 2>/dev/null || echo missing)"
-health="$(kubectl -n argocd get application monitoring -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
-if [[ "$sync" != "Synced" || "$health" != "Healthy" ]]; then
-  echo "==> FAILED: monitoring app sync=$sync health=$health (expected Synced/Healthy)" >&2
+echo "==> wait for Argo Application monitoring Synced (up to ${WAIT_SECS}s)"
+deadline=$((SECONDS + WAIT_SECS))
+app_ok=0
+while (( SECONDS < deadline )); do
+  sync="$(kubectl -n argocd get application monitoring -o jsonpath='{.status.sync.status}' 2>/dev/null || echo missing)"
+  health="$(kubectl -n argocd get application monitoring -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
+  echo "poll: monitoring sync=$sync health=$health"
+  # Progressing is OK while Grafana rolls; require Synced.
+  if [[ "$sync" == "Synced" && "$health" =~ ^(Healthy|Progressing)$ ]]; then
+    app_ok=1
+    break
+  fi
+  sleep 5
+done
+kubectl -n argocd get application monitoring || true
+if [[ "$app_ok" -ne 1 ]]; then
+  echo "==> FAILED: monitoring app not Synced (last sync=$sync health=$health)" >&2
   exit 1
 fi
 
@@ -25,17 +36,17 @@ echo "==> wait for Prometheus + Grafana Ready (up to ${WAIT_SECS}s)"
 deadline=$((SECONDS + WAIT_SECS))
 ready=0
 while (( SECONDS < deadline )); do
-  prom="$(kubectl -n "$NS_MON" get pods -l app.kubernetes.io/name=prometheus -o jsonpath='{range .items[*]}{.status.phase}{" "}{end}' 2>/dev/null || true)"
-  graf="$(kubectl -n "$NS_MON" get pods -l app.kubernetes.io/name=grafana -o jsonpath='{range .items[*]}{.status.phase}{" "}{end}' 2>/dev/null || true)"
-  echo "poll: prometheus=[${prom}] grafana=[${graf}]"
-  if [[ "$prom" == *Running* && "$graf" == *Running* ]]; then
+  prom_ready="$(kubectl -n "$NS_MON" get pods -l app.kubernetes.io/name=prometheus -o jsonpath='{range .items[*]}{.status.containerStatuses[0].ready}{" "}{end}' 2>/dev/null || true)"
+  graf_ready="$(kubectl -n "$NS_MON" get pod -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].status.containerStatuses[?(@.name=="grafana")].ready}' 2>/dev/null || true)"
+  echo "poll: prometheus_ready=[${prom_ready}] grafana_ready=[${graf_ready}]"
+  if [[ "$prom_ready" == *true* && "$graf_ready" == "true" ]]; then
     ready=1
     break
   fi
   sleep 5
 done
 if [[ "$ready" -ne 1 ]]; then
-  echo "==> FAILED: Prometheus/Grafana not Running" >&2
+  echo "==> FAILED: Prometheus/Grafana not Ready" >&2
   kubectl -n "$NS_MON" get pods
   exit 1
 fi
