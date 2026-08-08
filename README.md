@@ -107,4 +107,5 @@ Next: Chaos Mesh.
 ## Docs
 
 - Decision log: [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- Lessons learned (incidents / fixes): [`docs/LESSONS.md`](docs/LESSONS.md)
 - Smoke cheatsheet: [`deploy/scripts/smoke-all.md`](deploy/scripts/smoke-all.md)

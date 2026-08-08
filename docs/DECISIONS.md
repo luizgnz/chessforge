@@ -699,3 +699,4 @@ Postgres (custom lost query via postgres-exporter) ──► ServiceMonitor ─�
 | 2026-08-07 | Smoke scripts/docs added: `deploy/scripts/smoke-{local,docker,pipeline,keda}.sh`, cheatsheet `deploy/scripts/smoke-all.md`, README "Smoke tests" section (wraps kind-up + focused checks; no new long e2e). |
 | 2026-08-07 | ADR-015: Phase 5 design proposed (kube-prometheus-stack via Argo, NATS :8222 + analyzer prometheus_client + postgres lost query, one dashboard, alert lost>0). |
 | 2026-08-07 | ADR-015 implemented: Argo `monitoring` (kube-prometheus-stack 88.2.0), NATS promExporter+PodMonitor (no native :8222/metrics), analyzer `prometheus_client` :9090, postgres-exporter `chessforge_lost_games` + PrometheusRule, one Grafana dashboard; smoke-observability.sh. |
+| 2026-08-07 | Added [`docs/LESSONS.md`](LESSONS.md): implementation incidents (symptom → diagnosis → fix → lesson), cross-cutting themes, links to smoke regression scripts; README Docs section links it. |
