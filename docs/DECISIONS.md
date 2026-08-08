@@ -769,6 +769,60 @@ ingest Job ──publish──► JetStream CHESSFORGE / analyzers
 
 ---
 
+## ADR-017 — Optional Phase 7 design: cluster report Job (not HTTP API)
+
+| | |
+|--|--|
+| **Date** | 2026-08-08 |
+| **Phase** | 7 (optional product UX) |
+| **Status** | Accepted (design; not implemented yet) |
+| **Depends on** | Phase 0 `report` CLI, Phase 3 Postgres + `chessforge-db` Secret |
+
+**Context:** Phases 0–6 prove analysis, GitOps, scaling, observability, and chaos. Querying blunders by ECO still requires the local SQLite CLI or ad-hoc `psql`. An optional thin slice closes the **product** loop against cluster Postgres without adding infrastructure learning goals.
+
+### Approaches considered
+
+| Approach | Summary | Trade-offs |
+|----------|---------|------------|
+| **A — Kubernetes Job running `chessforge.report` (recommended)** | Same pattern as ingest smoke: Job YAML + script; `DATABASE_URL` from ESO Secret; prints ECO blunder stats to logs. | Tiny surface; reuses CLI; no always-on Service. Needs Postgres support in report path (today `report.py` is SQLite-only). |
+| **B — Small HTTP API** (e.g. FastAPI `/report?eco=`) | Always-on Deployment + Service; `curl` for demos. | More code, probes, scrape/auth noise; little ops learning beyond Phase 3–6. |
+| **C — Skip** | Keep `psql` / local report only. | Valid; product demo stays incomplete in-cluster. |
+
+**Decision:** **Approach A** (Job + smoke). HTTP API deferred unless a later demo needs always-on access.
+
+### Locked choices
+
+| Topic | Choice |
+|-------|--------|
+| Interface | `python -m chessforge.report --eco <CODE>` (and `--db` **or** `DATABASE_URL` for Postgres) |
+| Runtime | Kubernetes **Job** in `chessforge` (smoke-applied, like ingest) — **not** an always-on Argo workload |
+| Image | `ghcr.io/luizgnz/chessforge:latest` (same image as analyzer/ingest) |
+| Credentials | Existing Secret `chessforge-db` → `DATABASE_URL` (Vault/ESO unchanged) |
+| Code change | Extend report to read Postgres when `DATABASE_URL` is set (add `games_for_eco` / `elo_band` on `pg.py` or shared helper); keep SQLite path for local CLI |
+| Deliverables | `deploy/k8s/jobs/report-eco.yaml` (ECO via env/args), `deploy/scripts/smoke-report.sh`, README + smoke-all.md entries |
+| Out of scope | HTTP API, auth, Ingress, Grafana panels for ECO stats |
+
+### Goal
+
+1. After pipeline data exists in Postgres, an operator can run one Job/script and see the same style of ECO report as local Phase 0.
+2. No new GitOps surface beyond optional Job manifests (smoke-driven).
+3. Local SQLite `report` keeps working.
+
+### Success criteria
+
+1. `./deploy/scripts/smoke-report.sh` (or equivalent) with ECO `C50` exits 0 when Italian games exist.
+2. Job logs include `games_analyzed`, `median_first_blunder_ply`, `blunder_rate_by_elo`.
+3. Re-run does not require wiping pipeline data; read-only against `games`.
+
+### Rejected
+
+- Shipping FastAPI “for completeness” — YAGNI after Phase 6.
+- Putting the report Job under continuous Argo sync — Jobs are a poor always-reconciled primitive (Lesson: ingest/chaos smoke pattern).
+
+**GitOps impact:** Unchanged (met). Optional Job is smoke-applied, not a new reconciliation boundary.
+
+---
+
 ## Decision index by phase
 
 | Phase | ADRs | GitOps met? |
@@ -780,6 +834,7 @@ ingest Job ──publish──► JetStream CHESSFORGE / analyzers
 | 4 KEDA | 011, **014** | Yes (KEDA Helm + ScaledObject under Argo) |
 | 5 Observability | **015** | Yes (kube-prometheus-stack + scrapes/dashboard/alert under Argo) |
 | 6 Chaos | **016** | Yes (Chaos Mesh Helm under Argo; PodChaos via smoke) |
+| 7 Report Job (optional) | **017** | Yes (unchanged; Job is smoke-driven) |
 
 ---
 
@@ -801,3 +856,4 @@ ingest Job ──publish──► JetStream CHESSFORGE / analyzers
 | 2026-08-07 | ADR-015 implemented: Argo `monitoring` (kube-prometheus-stack 88.2.0), NATS promExporter+PodMonitor (no native :8222/metrics), analyzer `prometheus_client` :9090, postgres-exporter `chessforge_lost_games` + PrometheusRule, one Grafana dashboard; smoke-observability.sh. |
 | 2026-08-07 | Added [`docs/LESSONS.md`](LESSONS.md): implementation incidents (symptom → diagnosis → fix → lesson), cross-cutting themes, links to smoke regression scripts; README Docs section links it. |
 | 2026-08-07 | ADR-016: Phase 6 design + implementation — Chaos Mesh Helm via Argo (`2.8.3`, containerd on kind), smoke-applied `PodChaos` on analyzer, `smoke-chaos.sh` integrity (lost=0, no duplicate game_ids). |
+| 2026-08-08 | ADR-017: optional Phase 7 design — cluster **report Job** (reuse CLI + Postgres via `DATABASE_URL`); HTTP API deferred. |
