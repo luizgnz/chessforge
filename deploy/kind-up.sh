@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Phase 3–5 bootstrap: kind + Argo CD + root Application. Argo owns the rest
-# (Vault, ESO, KEDA, monitoring, NATS, Postgres, analyzer + ScaledObject).
+# Phase 3–6 bootstrap: kind + Argo CD + root Application. Argo owns the rest
+# (Vault, ESO, KEDA, monitoring, Chaos Mesh, NATS, Postgres, analyzer + ScaledObject).
 # Then: vault bootstrap (demo), wait for stack, load GHCR image into kind, run ingest smoke.
+# PodChaos experiments are opt-in via ./deploy/scripts/smoke-chaos.sh (not always-on).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -77,15 +78,16 @@ else
   echo "==> using public pull for $IMAGE (set FORCE_KIND_LOAD=1 to kind load instead)"
 fi
 
-echo "==> wait for keda + monitoring + nats + postgres + analyzer"
+echo "==> wait for keda + monitoring + chaos-mesh + nats + postgres + analyzer"
 for i in $(seq 1 120); do
   k="$(kubectl -n argocd get application keda -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
   m="$(kubectl -n argocd get application monitoring -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
+  ch="$(kubectl -n argocd get application chaos-mesh -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
   n="$(kubectl -n argocd get application nats -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
   p="$(kubectl -n argocd get application postgres -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
   c="$(kubectl -n argocd get application chessforge -o jsonpath='{.status.health.status}' 2>/dev/null || echo missing)"
-  echo "poll $i: keda=$k monitoring=$m nats=$n postgres=$p chessforge=$c"
-  if [[ "$k" == "Healthy" && "$m" == "Healthy" && "$n" == "Healthy" && "$p" == "Healthy" && "$c" == "Healthy" ]]; then
+  echo "poll $i: keda=$k monitoring=$m chaos-mesh=$ch nats=$n postgres=$p chessforge=$c"
+  if [[ "$k" == "Healthy" && "$m" == "Healthy" && "$ch" == "Healthy" && "$n" == "Healthy" && "$p" == "Healthy" && "$c" == "Healthy" ]]; then
     break
   fi
   sleep 10
@@ -117,9 +119,9 @@ echo "==> Argo applications"
 kubectl -n argocd get applications
 
 if [[ "$count" =~ ^[0-9]+$ ]] && [[ "$count" -ge 5 ]]; then
-  echo "==> SUCCESS Phase 3–5 smoke: games=${count} (GitOps + Vault/ESO + KEDA + monitoring)"
+  echo "==> SUCCESS Phase 3–6 smoke: games=${count} (GitOps + Vault/ESO + KEDA + monitoring + Chaos Mesh)"
   kubectl -n "$NS" get deploy,scaledobject analyzer || true
-  kubectl -n argocd get application monitoring 2>/dev/null || true
+  kubectl -n argocd get application monitoring chaos-mesh 2>/dev/null || true
   exit 0
 fi
 echo "==> FAILED: expected >=5 games, got ${count}" >&2

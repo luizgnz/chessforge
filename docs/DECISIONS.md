@@ -669,6 +669,106 @@ Postgres (custom lost query via postgres-exporter) ──► ServiceMonitor ─�
 
 ---
 
+## ADR-016 — Phase 6 design: Chaos Mesh PodChaos on analyzers
+
+| | |
+|--|--|
+| **Date** | 2026-08-07 |
+| **Phase** | 6 |
+| **Status** | Implemented |
+| **Depends on** | ADR-001 (integrity criterion), ADR-007 (JetStream redelivery), ADR-013 (GitOps), ADR-014 (KEDA scale-up during backlog) |
+
+**Context:** Phases 3–5 deliver a GitOps pipeline on kind with JetStream workers, KEDA scale-to-zero, and observability. The original product success metric (ADR-001) still needs a chaos rehearsal: kill analyzer pods mid-run, rely on NATS redelivery + idempotent Postgres writes, and prove **`lost=0`** with **no duplicate `game_id`s**. Phase 6 adds Chaos Mesh under Argo and a focused smoke that injects `PodChaos` (not an always-on experiment).
+
+### Approaches considered
+
+| Approach | Summary | Trade-offs |
+|----------|---------|------------|
+| **A — Chaos Mesh Helm child + smoke-applied PodChaos (recommended)** | Argo Application `chaos-mesh` installs the official Chaos Mesh Helm chart (kind values: containerd). Example `PodChaos` YAML lives in Git under `deploy/k8s/chaos/` and is **applied by `smoke-chaos.sh`**, not continuously reconciled. | Matches KEDA/monitoring GitOps pattern; experiments stay imperative like the ingest Job (Lesson 6). Privileged chaos-daemon required on kind nodes. |
+| **B — Chaos Mesh + always-on PodChaos under Argo** | Same operator; PodChaos in an Argo path with auto-sync. | Continuous pod kills fight KEDA idle/scale demos and pollute every sync; worse for day-to-day learning. |
+| **C — LitmusChaos** | Litmus operator + ChaosEngine for pod-delete. | Valid; project preference and prior notes favor **Chaos Mesh**. Extra product surface for the same pod-kill lesson. |
+| **D — Imperative `kubectl delete pod` only** | No chaos framework; smoke deletes analyzer pods by hand. | Proves redelivery, but skips the Chaos Mesh / CRD learning goal and GitOps operator install. |
+
+**Decision:** **Approach A** (Chaos Mesh under Argo; experiment applied by smoke).
+
+### Locked choices
+
+| Topic | Choice |
+|-------|--------|
+| Framework | **Chaos Mesh** (not Litmus) |
+| Install | Official Helm chart via Argo child Application `chaos-mesh` (chart **`2.8.3`**) |
+| Namespace | `chaos-mesh` (operator); experiments target namespace `chessforge` |
+| Sync wave | **`chaos-mesh` at wave `2`** (with monitoring) so CRDs exist before any smoke-applied experiment |
+| Runtime (kind) | chaos-daemon **`runtime: containerd`**, **`socketPath: /run/containerd/containerd.sock`** (kind has no `/var/run/docker.sock`) |
+| Controller size | **`controllerManager.replicaCount: 1`** on kind; DNSChaos server **off** (`dnsServer.create: false`) — unused in Phase 6 |
+| Experiment | **`PodChaos`** `action: pod-kill`, `mode: all`, selector `app=analyzer` in `chessforge`, short `duration` (e.g. 45s) |
+| Experiment lifecycle | YAML in `deploy/k8s/chaos/analyzer-pod-kill.yaml`; **smoke applies / deletes** — not an Argo child path (same rationale as ingest Job) |
+| Workload under test | Deployment `analyzer` (KEDA may scale from 0; smoke waits for Running pods after ingest before inject) |
+| Integrity queries | Smoke **truncates** `games` / `move_evals` / `ingest_runs` first (clean run). After drain: `COUNT(games) >= EXPECTED` (5); `COUNT(*) = COUNT(DISTINCT game_id)`; **`lost = GREATEST(0, latest_ingest.games_enqueued - COUNT(games)) = 0`** (latest run — not `SUM` across history) |
+| Docs | Design in this file; smoke cheatsheet + README; lessons if bring-up incidents appear |
+
+### Goal
+
+1. Chaos Mesh controller + chaos-daemon are desired state under Argo on kind.
+2. Mid-run `PodChaos` kills analyzer pods while JetStream still has work.
+3. Redelivery + `ON CONFLICT DO NOTHING` persistence yield full sample completion.
+4. Post-chaos checks match ADR-001: **`lost=0`**, **no duplicate `game_id` rows**.
+5. Experiments are opt-in via smoke (cluster is not continuously chaotic).
+
+### GitOps layout (intended)
+
+| Child Application | Delivers |
+|-------------------|----------|
+| `chaos-mesh` (**new**) | Chaos Mesh Helm chart + kind values (`deploy/helm/chaos-mesh-values.yaml`) |
+| *(not under Argo)* | `deploy/k8s/chaos/analyzer-pod-kill.yaml` applied by `deploy/scripts/smoke-chaos.sh` |
+
+Root Application already globs `deploy/gitops/applications/` — adding `chaos-mesh.yaml` is enough for discovery.
+
+### Experiment flow
+
+```text
+ingest Job ──publish──► JetStream CHESSFORGE / analyzers
+                              │
+                     KEDA scales analyzer pods > 0
+                              │
+              smoke applies PodChaos (pod-kill, app=analyzer)
+                              │
+                     unacked messages redelivered
+                              │
+                     new analyzer pods (KEDA / Deployment)
+                              │
+                     idempotent persist ──► Postgres
+                              │
+              smoke: games>=5, lost=0, no duplicate game_ids
+```
+
+### Success criteria
+
+1. Argo Application `chaos-mesh` Synced; controller-manager and chaos-daemon pods Ready.
+2. `smoke-chaos.sh` truncates pipeline tables, completes ingest, observes analyzer pods, injects `PodChaos`, then passes integrity checks.
+3. Postgres: `games >= 5`, `lost=0` vs latest ingest, `COUNT(*) = COUNT(DISTINCT game_id)`.
+4. Changing Chaos Mesh Application/values in Git → Argo syncs (no routine imperative Helm for the operator).
+5. Re-running the smoke does not leave a permanent PodChaos object (smoke deletes it on success/failure cleanup).
+
+### Out of scope (Phase 6)
+
+- NetworkChaos / IOChaos / TimeChaos / StressChaos catalogs
+- Always-on chaos schedules in production-shaped environments
+- Litmus; chaos dashboard SSO; multi-cluster chaos
+- Query HTTP API / report Job
+- Changing the ADR-015 `SUM(games_enqueued)` lost metric (smoke uses latest-run lost; exporter alert may still read high after many re-smokes — known limitation)
+
+### Rejected alternatives (this design pass)
+
+- **Approach B** — always-on PodChaos under Argo (hostile to idle/demo cluster).
+- **Approach C** — Litmus (preference is Chaos Mesh).
+- **Approach D** — raw `kubectl delete pod` only (skips the operator learning goal).
+- **Docker runtime defaults** on kind — socket missing; must use containerd.
+
+**GitOps impact:** Remains **met** if Chaos Mesh is reconciled by Argo and experiments stay smoke-driven as above.
+
+---
+
 ## Decision index by phase
 
 | Phase | ADRs | GitOps met? |
@@ -679,7 +779,7 @@ Postgres (custom lost query via postgres-exporter) ──► ServiceMonitor ─�
 | 3 Argo CD + Vault + ESO | 010, 012, **013** | Yes (when kind-up Phase 3 smoke passes) |
 | 4 KEDA | 011, **014** | Yes (KEDA Helm + ScaledObject under Argo) |
 | 5 Observability | **015** | Yes (kube-prometheus-stack + scrapes/dashboard/alert under Argo) |
-| 6 Chaos | (pending ADR; criterion from 001) | Yes if under Argo |
+| 6 Chaos | **016** | Yes (Chaos Mesh Helm under Argo; PodChaos via smoke) |
 
 ---
 
@@ -700,3 +800,4 @@ Postgres (custom lost query via postgres-exporter) ──► ServiceMonitor ─�
 | 2026-08-07 | ADR-015: Phase 5 design proposed (kube-prometheus-stack via Argo, NATS :8222 + analyzer prometheus_client + postgres lost query, one dashboard, alert lost>0). |
 | 2026-08-07 | ADR-015 implemented: Argo `monitoring` (kube-prometheus-stack 88.2.0), NATS promExporter+PodMonitor (no native :8222/metrics), analyzer `prometheus_client` :9090, postgres-exporter `chessforge_lost_games` + PrometheusRule, one Grafana dashboard; smoke-observability.sh. |
 | 2026-08-07 | Added [`docs/LESSONS.md`](LESSONS.md): implementation incidents (symptom → diagnosis → fix → lesson), cross-cutting themes, links to smoke regression scripts; README Docs section links it. |
+| 2026-08-07 | ADR-016: Phase 6 design + implementation — Chaos Mesh Helm via Argo (`2.8.3`, containerd on kind), smoke-applied `PodChaos` on analyzer, `smoke-chaos.sh` integrity (lost=0, no duplicate game_ids). |

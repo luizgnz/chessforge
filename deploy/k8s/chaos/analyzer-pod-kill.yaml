@@ -1,0 +1,19 @@
+# Example PodChaos — applied by smoke-chaos.sh (not always-on under Argo).
+# Kills analyzer pods mid-run so NATS JetStream redelivers unacked work.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: analyzer-pod-kill
+  namespace: chessforge
+  labels:
+    app.kubernetes.io/part-of: chessforge
+    chessforge.io/experiment: analyzer-pod-kill
+spec:
+  action: pod-kill
+  mode: all
+  duration: 45s
+  selector:
+    namespaces:
+      - chessforge
+    labelSelectors:
+      app: analyzer

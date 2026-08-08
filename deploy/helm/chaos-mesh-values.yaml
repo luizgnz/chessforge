@@ -1,0 +1,32 @@
+# Kind-oriented Chaos Mesh (ADR-016). containerd runtime; lean controller.
+controllerManager:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+chaosDaemon:
+  # kind nodes use containerd (not dockershim / docker.sock).
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+  privileged: true
+
+dashboard:
+  create: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# DNSChaos not used in Phase 6; skip extra pods on kind.
+dnsServer:
+  create: false
+
+bpfki:
+  create: false

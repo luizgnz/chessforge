@@ -8,10 +8,11 @@ Reproducible verification paths used across phases. Scripts live next to this fi
 | Phase 0 — local + Stockfish | `RUN_ANALYZE=1 ./deploy/scripts/smoke-local.sh` | pytest green; `lost=0` |
 | Phase 1 — Docker image | `./deploy/scripts/smoke-docker.sh` | `lost=0` (1 game) |
 | Phase 1 — CI (same as Docker) | GitHub Actions `image` job Smoke step | container exit 0 |
-| Phase 3–5 — full bring-up | `./deploy/kind-up.sh` | Argo Healthy; Vault→ESO Secret; monitoring; `games>=5` |
+| Phase 3–6 — full bring-up | `./deploy/kind-up.sh` | Argo Healthy; Vault→ESO Secret; monitoring; chaos-mesh; `games>=5` |
 | Phase 2/3 — pipeline only | `./deploy/scripts/smoke-pipeline.sh` | ingest Job complete; `games>=5` |
 | Phase 4 — KEDA scale | `./deploy/scripts/smoke-keda.sh` | idle `0` (or warn); after ingest replicas `>0`; `games>=5` |
 | Phase 5 — Observability | `./deploy/scripts/smoke-observability.sh` | monitoring Synced/Healthy; Prometheus+Grafana Running |
+| Phase 6 — Chaos | `./deploy/scripts/smoke-chaos.sh` | PodChaos on analyzers; `games>=5`; `lost=0`; no duplicate `game_id`s |
 | Teardown | `./deploy/kind-down.sh` | kind cluster deleted |
 
 All script text is English-only. Prefer these focused smokes after `kind-up` rather than inventing longer e2e suites.
@@ -63,7 +64,7 @@ docker run --rm chessforge:local
 
 ---
 
-## Phase 3–5 — full kind bring-up (GitOps + Vault/ESO + KEDA + monitoring)
+## Phase 3–6 — full kind bring-up (GitOps + Vault/ESO + KEDA + monitoring + Chaos Mesh)
 
 Creates kind, installs Argo CD, applies root Application, bootstraps Vault, waits for the stack, runs ingest, asserts Postgres count.
 
@@ -72,7 +73,7 @@ Creates kind, installs Argo CD, applies root Application, bootstraps Vault, wait
 # FORCE_KIND_LOAD=1 ./deploy/kind-up.sh   # build + kind load if needed
 ```
 
-Success line: `SUCCESS Phase 3–5 smoke: games=N` with `N >= 5`.
+Success line: `SUCCESS Phase 3–6 smoke: games=N` with `N >= 5`.
 
 Also verify:
 
@@ -81,6 +82,7 @@ kubectl -n argocd get applications
 kubectl -n chessforge get secret chessforge-db
 kubectl -n chessforge get deploy,scaledobject analyzer
 kubectl -n monitoring get pods
+kubectl -n chaos-mesh get pods
 ```
 
 Demo Vault unseal material: `.vault-init.json` (gitignored) and Secret `vault-init` in namespace `vault`. Re-bootstrap: `./deploy/scripts/vault-bootstrap.sh`.
@@ -159,6 +161,39 @@ Notes:
 
 ---
 
+## Phase 6 — Chaos Mesh (analyzer pod-kill)
+
+```bash
+./deploy/scripts/smoke-chaos.sh
+# SCALE_WAIT_SECS=180 DRAIN_WAIT_SECS=360 ./deploy/scripts/smoke-chaos.sh
+```
+
+Manual sketch:
+
+```bash
+kubectl -n argocd get application chaos-mesh
+kubectl -n chaos-mesh get pods
+kubectl -n chessforge delete job ingest-sample --ignore-not-found
+kubectl apply -f deploy/k8s/jobs/ingest-sample.yaml
+# wait until analyzer pods are Running, then:
+kubectl apply -f deploy/k8s/chaos/analyzer-pod-kill.yaml
+kubectl -n chessforge get podchaos analyzer-pod-kill
+# after drain:
+kubectl -n chessforge exec chessforge-postgresql-0 -- \
+  env PGPASSWORD=chessforge psql -U chessforge -d chessforge -c \
+  "SELECT COUNT(*) AS games, COUNT(DISTINCT game_id) AS distinct_ids FROM games;"
+kubectl -n chessforge delete podchaos analyzer-pod-kill --ignore-not-found
+```
+
+Notes:
+
+- Argo Application `chaos-mesh` installs Chaos Mesh Helm **2.8.3** (wave 2); kind values use **containerd** (`/run/containerd/containerd.sock`).
+- Experiment YAML is **not** always-on under Argo (same pattern as the ingest Job).
+- Integrity uses **latest** ingest `games_enqueued` for `lost` (not `SUM` across re-smokes).
+- Success: `games>=5`, `lost=0`, `COUNT(*) = COUNT(DISTINCT game_id)`.
+
+---
+
 ## Suggested order after a fresh clone
 
 ```bash
@@ -168,5 +203,6 @@ Notes:
 ./deploy/scripts/smoke-pipeline.sh       # re-check without recreating kind
 ./deploy/scripts/smoke-keda.sh           # idle → scale-up after ingest
 ./deploy/scripts/smoke-observability.sh  # Prometheus/Grafana + scrapes
+./deploy/scripts/smoke-chaos.sh          # PodChaos mid-run → lost=0
 ./deploy/kind-down.sh
 ```

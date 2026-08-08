@@ -24,6 +24,8 @@ This file is **not** an ADR log. Design choices live in [`docs/DECISIONS.md`](DE
 | 10 | Prometheus scrape of NATS `:8222/metrics` returns **404** | Native NATS HTTP monitor serves JSON (`/jsz`, etc.), not Prometheus text | Enable chart `promExporter` sidecar (`:7777`) + PodMonitor (ADR-015 / `f44c860`) | “Has an HTTP port” ≠ “exposes Prometheus”; verify the path before writing ServiceMonitors |
 | 11 | postgres-exporter up but no `chessforge_lost_games` / TLS errors | Kind Postgres has no TLS; DSN from Vault omitted `sslmode=disable` | Default DSN includes `sslmode=disable`; exporter entrypoint appends it if missing (`96f61b6`) | Client TLS defaults differ between libraries; demo DSNs must match the actual server |
 | 12 | Observability smoke fails while Grafana still rolling | Argo health `Progressing` and Prometheus label forms (`chessforge_lost_games{…}`) broke strict checks | Smoke waits for Synced + Ready pods; grep allows labeled series (`3bda586`, `f63ce2a`) | Smokes should assert *capability* (Synced, Ready, metric present), not a single transient Argo health enum |
+| 13 | Chaos Mesh chaos-daemon CrashLoop / cannot kill pods on kind | Chart default `runtime: docker` + `/var/run/docker.sock` — kind nodes expose **containerd** only | `chaosDaemon.runtime: containerd`, `socketPath: /run/containerd/containerd.sock` in `deploy/helm/chaos-mesh-values.yaml` (ADR-016) | Match the node CRI; “works on Docker Desktop kube” defaults fail on kind |
+| 14 | Chaos / pipeline “lost > 0” after many successful re-smokes | Exporter `lost` uses `SUM(ingest_runs.games_enqueued) - COUNT(games)`; idempotent re-ingest grows the sum while games stay at 5 | Chaos smoke computes `lost` vs **latest** ingest run only; treat exporter SUM as a known Phase 5 limitation under re-smoke | Integrity formulas must match the smoke lifecycle (one run vs cumulative) |
 
 ---
 
@@ -39,7 +41,7 @@ GitOps owns steady state; **Vault init/unseal/seed** stays outside Argo on purpo
 
 ### GitOps vs Jobs
 
-Argo is excellent for Deployments, Helm releases, CRDs, and ScaledObjects. One-shot ingest Jobs are smoke tools: delete/apply/wait, then assert Postgres counts. Mixing them into the reconciled app path creates false drift.
+Argo is excellent for Deployments, Helm releases, CRDs, and ScaledObjects. One-shot ingest Jobs **and** Chaos Mesh experiments are smoke tools: delete/apply/wait, then assert Postgres counts. Mixing them into the reconciled app path creates false drift (or continuous pod kills).
 
 ### Observability assumptions
 
@@ -67,5 +69,6 @@ Use these after changes to bootstrap, Helm values, secrets, or scrapes. Full che
 | Pipeline only (cluster up) | `./deploy/scripts/smoke-pipeline.sh` |
 | KEDA scale-to-zero / scale-up | `./deploy/scripts/smoke-keda.sh` |
 | Prometheus / Grafana / scrapes | `./deploy/scripts/smoke-observability.sh` |
+| Chaos Mesh pod-kill integrity | `./deploy/scripts/smoke-chaos.sh` |
 
-Related design: [`docs/DECISIONS.md`](DECISIONS.md) (ADR-013…015).
+Related design: [`docs/DECISIONS.md`](DECISIONS.md) (ADR-013…016).

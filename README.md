@@ -1,6 +1,6 @@
 # chessforge
 
-Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets, KEDA scale-to-zero on JetStream lag, and Prometheus/Grafana observability.
+Analyze PGN games with Stockfish. Local CLI (SQLite), container image (GHCR), and a kind + GitOps pipeline (NATS → workers → Postgres) with Vault + External Secrets, KEDA scale-to-zero on JetStream lag, Prometheus/Grafana observability, and Chaos Mesh pod-kill experiments.
 
 ## Requirements
 
@@ -39,13 +39,14 @@ If anonymous `docker pull ghcr.io/luizgnz/chessforge:latest` still fails with un
 
 (`gh` needs `read:packages` / `write:packages` to change this via API; the default `gh auth` token often lacks those scopes.)
 
-## Phase 3–5 — GitOps on kind (Argo + Vault + ESO + KEDA + monitoring)
+## Phase 3–6 — GitOps on kind (Argo + Vault + ESO + KEDA + monitoring + Chaos Mesh)
 
 Bootstrap (once): create kind + install Argo CD + apply the root Application.  
-Argo reconciles Vault, ESO, KEDA, **kube-prometheus-stack**, NATS, Postgres, the analyzer Deployment, and its ScaledObject from Git.  
+Argo reconciles Vault, ESO, KEDA, **kube-prometheus-stack**, **Chaos Mesh**, NATS, Postgres, the analyzer Deployment, and its ScaledObject from Git.  
 DB credentials live in Vault; ESO syncs them to Secret `chessforge-db`.  
 Analyzer replicas follow JetStream consumer lag (`minReplicaCount: 0`, `maxReplicaCount: 4`).  
-Prometheus scrapes NATS (promExporter), analyzer `/metrics`, and postgres-exporter (`chessforge_lost_games`).
+Prometheus scrapes NATS (promExporter), analyzer `/metrics`, and postgres-exporter (`chessforge_lost_games`).  
+Chaos Mesh is installed under Argo; pod-kill experiments are applied by the chaos smoke (not always-on).
 
 ```bash
 ./deploy/kind-up.sh    # needs this repo pushed to GitHub (Argo pulls HEAD)
@@ -53,7 +54,7 @@ Prometheus scrapes NATS (promExporter), analyzer `/metrics`, and postgres-export
 ```
 
 Smoke success: Postgres has 5 games from `data/sample.pgn`.  
-Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA), **ADR-015** (observability).
+Design records: [`docs/DECISIONS.md`](docs/DECISIONS.md) **ADR-013** (GitOps), **ADR-014** (KEDA), **ADR-015** (observability), **ADR-016** (chaos).
 
 ### Grafana (port-forward)
 
@@ -78,10 +79,11 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 | 0 Local | `./deploy/scripts/smoke-local.sh` | pytest green |
 | 0 + Stockfish | `RUN_ANALYZE=1 ./deploy/scripts/smoke-local.sh` | `lost=0` |
 | 1 Docker | `./deploy/scripts/smoke-docker.sh` | `lost=0` (1 game; same as CI) |
-| 3–5 Bring-up | `./deploy/kind-up.sh` | Argo Healthy; Secret `chessforge-db`; `games>=5` |
+| 3–6 Bring-up | `./deploy/kind-up.sh` | Argo Healthy; Secret `chessforge-db`; `games>=5` |
 | 2/3 Pipeline | `./deploy/scripts/smoke-pipeline.sh` | ingest complete; `games>=5` |
 | 4 KEDA | `./deploy/scripts/smoke-keda.sh` | idle `0→N` after ingest; `games>=5` |
 | 5 Observability | `./deploy/scripts/smoke-observability.sh` | monitoring Healthy; Prometheus+Grafana Running |
+| 6 Chaos | `./deploy/scripts/smoke-chaos.sh` | PodChaos mid-run; `games>=5`; `lost=0`; no duplicate `game_id`s |
 
 ```bash
 ./deploy/scripts/smoke-local.sh
@@ -90,6 +92,7 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 ./deploy/scripts/smoke-pipeline.sh   # re-check without recreating kind
 ./deploy/scripts/smoke-keda.sh       # scale-to-zero then scale-up
 ./deploy/scripts/smoke-observability.sh
+./deploy/scripts/smoke-chaos.sh      # kill analyzers mid-run; integrity
 ```
 
 ## What this demonstrates
@@ -101,8 +104,7 @@ Focused scripts wrap the verification paths used across phases. Full cheatsheet:
 5. Secrets via Vault + External Secrets Operator (no DB password in Git).
 6. KEDA autoscaling on NATS JetStream lag (scale-to-zero).
 7. Prometheus + Grafana pipeline dashboard and `lost > 0` alert (port-forward).
-
-Next: Chaos Mesh.
+8. Chaos Mesh `PodChaos` on analyzers with NATS redelivery and `lost=0` integrity.
 
 ## Docs
 
