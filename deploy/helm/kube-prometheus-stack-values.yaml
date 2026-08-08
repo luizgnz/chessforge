@@ -35,14 +35,16 @@ alertmanager:
 
 grafana:
   adminPassword: chessforge
+  # Kind: skip the large default dashboard pack; we ship one chessforge dashboard.
+  defaultDashboardsEnabled: false
   persistence:
     enabled: false
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
-    limits:
       memory: 256Mi
+    limits:
+      memory: 512Mi
   sidecar:
     dashboards:
       enabled: true

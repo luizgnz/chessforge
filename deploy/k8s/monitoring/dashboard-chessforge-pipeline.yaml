@@ -35,7 +35,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(nats_consumer_num_pending{consumer_name=\"analyzers\",stream_name=\"CHESSFORGE\"}) or sum(nats_jetstream_consumer_num_pending{consumer_name=\"analyzers\",stream_name=\"CHESSFORGE\"}) or vector(0)",
+              "expr": "sum(nats_consumer_num_pending{consumer_name=\"analyzers\",stream_name=\"CHESSFORGE\"}) or vector(0)",
               "legendFormat": "queue depth (num_pending)",
               "refId": "A"
             }

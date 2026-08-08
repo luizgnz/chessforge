@@ -42,9 +42,19 @@ spec:
         - name: postgres-exporter
           image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
           imagePullPolicy: IfNotPresent
-          args:
-            - --extend.query-path=/etc/postgres_exporter/queries.yaml
-            - --web.listen-address=:9187
+          # Kind Postgres has no TLS; append sslmode if the Vault URL omits it.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              case "$DATA_SOURCE_NAME" in
+                *sslmode=*) ;;
+                *) DATA_SOURCE_NAME="${DATA_SOURCE_NAME}?sslmode=disable" ;;
+              esac
+              export DATA_SOURCE_NAME
+              exec /bin/postgres_exporter \
+                --extend.query-path=/etc/postgres_exporter/queries.yaml \
+                --web.listen-address=:9187
           env:
             - name: DATA_SOURCE_NAME
               valueFrom:

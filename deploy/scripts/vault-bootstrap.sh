@@ -8,7 +8,7 @@ POD="${POD:-vault-0}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 INIT_FILE="${INIT_FILE:-$ROOT/.vault-init.json}"
 PASSWORD="${CHESSFORGE_DB_PASSWORD:-chessforge}"
-DB_URL="${CHESSFORGE_DATABASE_URL:-postgresql://chessforge:${PASSWORD}@chessforge-postgresql:5432/chessforge}"
+DB_URL="${CHESSFORGE_DATABASE_URL:-postgresql://chessforge:${PASSWORD}@chessforge-postgresql:5432/chessforge?sslmode=disable}"
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need kubectl
